@@ -1,7 +1,8 @@
 import asyncio
-from app.core.database import get_supabase
+
 from dotenv import load_dotenv
-import os
+
+from app.core.database import get_supabase
 
 load_dotenv()
 

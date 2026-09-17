@@ -12,7 +12,6 @@ GOTCHAS TESTED
 5.  Missing required keys should produce clear ValueError, not a silent empty string.
 """
 import os
-import pytest
 from unittest.mock import patch
 
 
@@ -24,6 +23,7 @@ class TestSupabaseUrlValidator:
         with patch.dict(os.environ, env, clear=True):
             # Re-import to get a fresh Settings() with the patched env
             import importlib
+
             import app.core.config as cfg_mod
             importlib.reload(cfg_mod)
             return cfg_mod.Settings()
@@ -116,6 +116,7 @@ class TestSettingsDefaults:
         """
         with patch.dict(os.environ, {}, clear=True):
             import importlib
+
             import app.core.config as cfg_mod
             importlib.reload(cfg_mod)
             s = cfg_mod.Settings(_env_file='')  # block .env
@@ -124,6 +125,7 @@ class TestSettingsDefaults:
     def test_model_config_uses_env_file(self):
         """model_config must declare env_file so pydantic-settings reads .env."""
         import importlib
+
         import app.core.config as cfg_mod
         importlib.reload(cfg_mod)
         cfg = cfg_mod.Settings.model_config

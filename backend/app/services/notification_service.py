@@ -1,6 +1,5 @@
 import logging
-from typing import Optional
-from app.core.database import get_supabase
+
 from supabase import Client
 
 logger = logging.getLogger(__name__)
@@ -12,7 +11,7 @@ class NotificationService:
         user_id: str,
         title: str,
         message: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Creates a push/in-app notification for a targeted user."""
         if not user_id:
             return None

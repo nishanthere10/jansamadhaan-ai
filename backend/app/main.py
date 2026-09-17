@@ -1,11 +1,12 @@
 import os
+
 from dotenv import load_dotenv
 
 # ── Load .env FIRST before any app module is imported ─────────────────────────
 load_dotenv()
 
-from app.core.logging_config import configure_logging
 from app.core.config import settings
+from app.core.logging_config import configure_logging
 
 # Configure structured logging immediately after env is loaded
 configure_logging(
@@ -14,10 +15,12 @@ configure_logging(
 )
 
 import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import ai, auth, incident, notifications, qr_projects
 from app.core.middleware import RequestLoggingMiddleware
-from app.api import auth, incident, qr_projects, ai, notifications
 
 logger = logging.getLogger(__name__)
 

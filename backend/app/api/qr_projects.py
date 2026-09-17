@@ -3,14 +3,16 @@ QR Projects API — CivicResponse AI
 Authority-managed transparent public projects with scannable QR codes.
 """
 
+import logging
 import os
-from fastapi import APIRouter, Depends, HTTPException, status as http_status
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status as http_status
+from pydantic import BaseModel
+from supabase import Client
+
 from app.core.database import get_supabase
 from app.core.security import get_current_user
-from supabase import Client
-from typing import Optional
-from pydantic import BaseModel
-import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,7 +22,7 @@ class QRProjectCreate(BaseModel):
     title: str
     description: str
     department: str
-    budget: Optional[float] = None
+    budget: float | None = None
 
 
 # ── Create Project ────────────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ def create_project(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create project: {str(e)}",
-        )
+        ) from e
 
 
 # ── List All Projects (public) ────────────────────────────────────────────────
@@ -87,7 +89,7 @@ def list_projects():
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch projects: {str(e)}",
-        )
+        ) from e
 
 
 # ── Get Single Project (public) ───────────────────────────────────────────────
@@ -108,4 +110,4 @@ def get_project(project_id: str):
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch project: {str(e)}",
-        )
+        ) from e

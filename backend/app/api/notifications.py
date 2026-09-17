@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status as http_status
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status as http_status
+from supabase import Client
+
 from app.core.database import get_supabase
 from app.core.security import get_current_user
-from supabase import Client
-import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,7 +31,7 @@ def list_notifications(user: dict = Depends(get_current_user)):
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch notifications: {str(e)}"
-        )
+        ) from e
 
 @router.put("/{notification_id}/read")
 def mark_notification_read(notification_id: str, user: dict = Depends(get_current_user)):
@@ -52,4 +55,4 @@ def mark_notification_read(notification_id: str, user: dict = Depends(get_curren
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to mark notification: {str(e)}"
-        )
+        ) from e

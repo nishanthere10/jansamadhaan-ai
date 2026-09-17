@@ -1,7 +1,9 @@
-from app.ai.models.graph_state import ComplaintGraphState
-from groq import Groq
-import os
 import logging
+import os
+
+from groq import Groq
+
+from app.ai.models.graph_state import ComplaintGraphState
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,8 @@ class TranscriptionService:
                 response.raise_for_status()
                 audio_bytes = response.content
                 filename = audio_path.split("/")[-1]
-                if "?" in filename: filename = filename.split("?")[0]
+                if "?" in filename:
+                    filename = filename.split("?")[0]
                 
                 transcription = self.client.audio.transcriptions.create(
                   file=(filename, audio_bytes),

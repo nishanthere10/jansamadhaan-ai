@@ -1,12 +1,13 @@
+
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+
 
 class SignupRequest(BaseModel):
     full_name: str
     email: EmailStr
     phone: str
     password: str
-    role: Optional[str] = "citizen"  # Always overridden to 'citizen' server-side
+    role: str | None = "citizen"  # Always overridden to 'citizen' server-side
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -20,7 +21,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     role: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
 
 class SignupResponseData(BaseModel):
     id: str
@@ -34,4 +35,4 @@ class LoginResponseData(BaseModel):
 class BaseResponse(BaseModel):
     success: bool
     message: str
-    data: Optional[dict] = None
+    data: dict | None = None

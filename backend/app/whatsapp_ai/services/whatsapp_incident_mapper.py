@@ -1,8 +1,12 @@
 import logging
-from typing import Optional
-from app.whatsapp_ai.schemas.whatsapp_message_schema import WhatsAppMessageSchema
+
 from app.whatsapp_ai.schemas.structured_incident_schema import StructuredIncidentPayload
-from app.whatsapp_ai.utils.whatsapp_constants import WHATSAPP_UNKNOWN_CATEGORY, WHATSAPP_UNKNOWN_TITLE, WHATSAPP_SOURCE
+from app.whatsapp_ai.schemas.whatsapp_message_schema import WhatsAppMessageSchema
+from app.whatsapp_ai.utils.whatsapp_constants import (
+    WHATSAPP_SOURCE,
+    WHATSAPP_UNKNOWN_CATEGORY,
+    WHATSAPP_UNKNOWN_TITLE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +14,8 @@ class WhatsAppIncidentMapper:
     @staticmethod
     def map_to_incident(
         message: WhatsAppMessageSchema, 
-        uploaded_image_url: Optional[str],
-        uploaded_audio_url: Optional[str]
+        uploaded_image_url: str | None,
+        uploaded_audio_url: str | None
     ) -> StructuredIncidentPayload:
         """
         Maps a parsed WhatsApp message + resolved media URLs to the standard Incident Payload.

@@ -1,6 +1,7 @@
 import logging
-from app.core.database import get_supabase
+
 from app.ai.services.langgraph_pipeline import get_pipeline
+from app.core.database import get_supabase
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +54,6 @@ async def process_incident_ai_background(
             # Fallback: run each service individually, catching failures per-node
             final_state = dict(initial_state)
             
-            nodes = [
-                ("transcribe", pipeline.graph_instance.transcriber if hasattr(pipeline, 'graph_instance') else None),
-                ("vision_analysis", None),
-                ("translate", None),
-                ("classify", None),
-                ("score_severity", None),
-                ("route_department", None),
-            ]
-            
-            # Re-create services and run them individually
             try:
                 from app.ai.services.transcription_service import TranscriptionService
                 result = TranscriptionService().process(final_state)
@@ -96,7 +87,9 @@ async def process_incident_ai_background(
                 logger.warning(f"[{incident_id}] Classification failed: {e}")
                 
             try:
-                from app.ai.services.severity_scoring_service import SeverityScoringService
+                from app.ai.services.severity_scoring_service import (
+                    SeverityScoringService,
+                )
                 result = SeverityScoringService().process(final_state)
                 final_state.update(result)
                 logger.info(f"[{incident_id}] Severity scoring completed")
@@ -104,7 +97,9 @@ async def process_incident_ai_background(
                 logger.warning(f"[{incident_id}] Severity scoring failed: {e}")
                 
             try:
-                from app.ai.services.department_routing_service import DepartmentRoutingService
+                from app.ai.services.department_routing_service import (
+                    DepartmentRoutingService,
+                )
                 result = DepartmentRoutingService().process(final_state)
                 final_state.update(result)
                 logger.info(f"[{incident_id}] Department routing completed")
@@ -131,7 +126,9 @@ async def process_incident_ai_background(
         # ── Phase 3: Duplicate Detection & Clustering ────────────
         cluster_meta = {}
         try:
-            from app.ai.services.duplicate_detection_service import DuplicateDetectionService
+            from app.ai.services.duplicate_detection_service import (
+                DuplicateDetectionService,
+            )
             cluster_meta = await DuplicateDetectionService.process(final_state)
             logger.info(f"[{incident_id}] Duplicate detection completed: {cluster_meta}")
         except Exception as dup_err:

@@ -1,6 +1,4 @@
 import logging
-import time
-from typing import Set
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +10,7 @@ class WhatsAppRetryService:
     """
     
     # In-memory deduplication set
-    processed_sids: Set[str] = set()
+    processed_sids: set[str] = set()
 
     @classmethod
     def is_already_processed(cls, message_sid: str) -> bool:

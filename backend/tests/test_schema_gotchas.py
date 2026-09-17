@@ -12,12 +12,14 @@ Comprehensive tests verifying alignment with the live Supabase SQL schema:
 - public.notifications
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, ANY
 from fastapi.testclient import TestClient
+
+from app.core.security import get_current_user
 from app.main import app
 from app.services.incident_service import IncidentService
-from app.core.security import get_current_user
 
 
 @pytest.fixture
@@ -278,7 +280,9 @@ class TestDedicatedSchemaTables:
         SCHEMA TABLE: public.duplicate_complaints
         Verifies duplicate attachments log to public.duplicate_complaints.
         """
-        from app.ai.services.duplicate_detection_service import DuplicateDetectionService
+        from app.ai.services.duplicate_detection_service import (
+            DuplicateDetectionService,
+        )
 
         mock_db = MagicMock()
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value = (

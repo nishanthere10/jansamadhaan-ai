@@ -1,9 +1,9 @@
 import logging
-import requests
-from requests.auth import HTTPBasicAuth
 import os
-from typing import Tuple
+
+import requests
 from fastapi import HTTPException
+from requests.auth import HTTPBasicAuth
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class WhatsAppMediaDownloader:
     """
 
     @staticmethod
-    def download_media(media_url: str) -> Tuple[bytes, str]:
+    def download_media(media_url: str) -> tuple[bytes, str]:
         """
         Downloads media bytes from Twilio securely.
         Returns (bytes, content_type).

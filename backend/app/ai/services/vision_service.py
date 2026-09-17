@@ -1,12 +1,14 @@
+import base64
 import logging
 import os
+
+import requests
 from groq import Groq
+
 from app.ai.models.graph_state import ComplaintGraphState
 
 logger = logging.getLogger(__name__)
 
-import requests
-import base64
 
 class VisionAnalysisService:
     def __init__(self):

@@ -1,6 +1,8 @@
-from typing_extensions import TypedDict
-from typing import Annotated, List, Optional
 import operator
+from typing import Annotated
+
+from typing_extensions import TypedDict
+
 
 class ComplaintGraphState(TypedDict):
     """
@@ -11,41 +13,41 @@ class ComplaintGraphState(TypedDict):
 
     # Raw Input
     original_text: str
-    audio_path: Optional[str]
-    image_url: Optional[str]
-    address: Optional[str]
-    location_lat: Optional[float]
-    location_lng: Optional[float]
+    audio_path: str | None
+    image_url: str | None
+    address: str | None
+    location_lat: float | None
+    location_lng: float | None
     
     # Vision & Transcription
-    vision_analysis: Optional[str]
-    transcript: Optional[str]
+    vision_analysis: str | None
+    transcript: str | None
     
     # Translation
-    detected_language: Optional[str]
-    translated_text: Optional[str]
+    detected_language: str | None
+    translated_text: str | None
     
     # Classification
-    category: Optional[str]
-    generated_title: Optional[str]
-    generated_summary: Optional[str]
+    category: str | None
+    generated_title: str | None
+    generated_summary: str | None
     keywords: Annotated[list[str], operator.add]
-    is_spam: Optional[bool]
-    spam_score: Optional[float]
-    spam_reason: Optional[str]
+    is_spam: bool | None
+    spam_score: float | None
+    spam_reason: str | None
     
     # Severity
-    severity: Optional[str]
-    severity_score: Optional[float]
-    severity_explanation: Optional[str]
+    severity: str | None
+    severity_score: float | None
+    severity_explanation: str | None
     
     # Routing
-    primary_department: Optional[str]
+    primary_department: str | None
     secondary_departments: Annotated[list[str], operator.add]
-    escalation_level: Optional[str]
+    escalation_level: str | None
     
     # Operations
-    ai_confidence_score: Optional[float]
+    ai_confidence_score: float | None
     needs_manual_review: bool
     status: str
-    error: Optional[str]
+    error: str | None

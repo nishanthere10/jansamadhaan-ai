@@ -2,7 +2,11 @@
 Deep diagnostic: trace the entire AI pipeline step by step, 
 then verify what gets written to Supabase.
 """
-import os, sys, json, traceback
+import json
+import os
+import sys
+import traceback
+
 from dotenv import load_dotenv
 
 load_dotenv('backend/.env')

@@ -5,12 +5,14 @@ Injects a unique X-Request-ID header into every request and response,
 and propagates it to the logging context variable so all log lines
 for a single request share the same ID.
 """
-import uuid
-import time
 import logging
+import time
+import uuid
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
 from app.core.logging_config import request_id_var
 
 logger = logging.getLogger(__name__)
@@ -38,7 +40,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         try:
             response: Response = await call_next(request)
-        except Exception as exc:
+        except Exception:
             elapsed = (time.perf_counter() - start) * 1000
             logger.exception(
                 f"✗ {request.method} {request.url.path} "

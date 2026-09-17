@@ -1,7 +1,7 @@
 import logging
-from supabase import Client
 import uuid
-from typing import Optional
+
+from supabase import Client
 
 logger = logging.getLogger(__name__)
 
@@ -68,4 +68,4 @@ class WhatsAppUserService:
             
         except Exception as e:
             logger.error(f"Failed to get_or_create_citizen for {phone_number}: {e}")
-            raise Exception(f"WhatsApp User Identity Error: {str(e)}")
+            raise Exception(f"WhatsApp User Identity Error: {str(e)}") from e

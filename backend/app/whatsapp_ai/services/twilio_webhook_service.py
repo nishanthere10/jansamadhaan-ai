@@ -8,22 +8,24 @@ Flow:
   4. User sends location OR "skip" → Bot creates incident with ALL collected data
 """
 
-import os
 import logging
+import os
 import re
-from fastapi import Request, BackgroundTasks, HTTPException
-from app.core.database import get_supabase
 
-# Utilities
-from app.whatsapp_ai.utils.twilio_signature_verifier import TwilioSignatureVerifier
+from fastapi import BackgroundTasks, HTTPException, Request
+
+from app.core.database import get_supabase
+from app.services.incident_service import IncidentService
+from app.whatsapp_ai.services.whatsapp_media_service import WhatsAppMediaService
 
 # Services
 from app.whatsapp_ai.services.whatsapp_message_parser import WhatsAppMessageParser
-from app.whatsapp_ai.services.whatsapp_media_service import WhatsAppMediaService
-from app.whatsapp_ai.services.whatsapp_user_service import WhatsAppUserService
-from app.whatsapp_ai.services.whatsapp_session_manager import WhatsAppSessionManager
 from app.whatsapp_ai.services.whatsapp_retry_service import WhatsAppRetryService
-from app.services.incident_service import IncidentService
+from app.whatsapp_ai.services.whatsapp_session_manager import WhatsAppSessionManager
+from app.whatsapp_ai.services.whatsapp_user_service import WhatsAppUserService
+
+# Utilities
+from app.whatsapp_ai.utils.twilio_signature_verifier import TwilioSignatureVerifier
 
 logger = logging.getLogger(__name__)
 

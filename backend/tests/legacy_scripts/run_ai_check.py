@@ -1,7 +1,8 @@
 import asyncio
+import logging
 import os
 import sys
-import logging
+
 from dotenv import load_dotenv
 
 load_dotenv('backend/.env')
@@ -10,6 +11,7 @@ sys.path.append(os.path.join(os.getcwd(), 'backend'))
 logging.basicConfig(level=logging.DEBUG)
 
 from app.ai.tasks import process_incident_ai_background
+
 
 async def main():
     print('Testing AI pipeline on real incident data...')

@@ -1,8 +1,9 @@
-import os
-import requests
 import base64
-from groq import Groq
+import os
+
+import requests
 from dotenv import load_dotenv
+from groq import Groq
 
 load_dotenv('backend/.env')
 api_key = os.environ.get("GROQ_API_KEY")

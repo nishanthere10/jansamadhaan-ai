@@ -1,10 +1,11 @@
-import logging
-import os
-import requests
 import base64
 import json
+import logging
+import os
+from typing import Any
+
+import requests
 from groq import Groq
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class ResolutionVerificationService:
     """
     
     @classmethod
-    def verify_resolution(cls, before_url: str, after_url: str, incident_title: str) -> Dict[str, Any]:
+    def verify_resolution(cls, before_url: str, after_url: str, incident_title: str) -> dict[str, Any]:
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             logger.warning("GROQ_API_KEY is not set. Resolution Verification skipped.")

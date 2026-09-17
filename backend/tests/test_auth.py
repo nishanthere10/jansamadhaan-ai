@@ -21,9 +21,7 @@ GOTCHAS TESTED — LOGIN
 10. User with no row in public.users must auto-create a profile on login.
 11. 'admin' / 'gov' in email must auto-assign 'authority' role during profile creation.
 """
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-
+from unittest.mock import MagicMock
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -289,8 +287,8 @@ class TestLogin:
             mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[])
 
             inserted = {}
-            def capture_insert(data):
-                inserted.update(data)
+            def capture_insert(data, bucket=inserted):
+                bucket.update(data)
                 m = MagicMock()
                 m.execute.return_value = MagicMock(data=[])
                 return m

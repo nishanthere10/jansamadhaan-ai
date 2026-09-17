@@ -1,22 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, status as http_status
-from app.schemas.incident import IncidentCreateRequest, IncidentStatusUpdate, IncidentTriageUpdate
+import logging
+import uuid
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import status as http_status
+from supabase import Client
+
 from app.core.database import get_supabase
 from app.core.security import get_current_user
-from supabase import Client
-from datetime import datetime, timezone
-import uuid
-import time
-import secrets
-import logging
+from app.schemas.incident import (
+    IncidentCreateRequest,
+    IncidentStatusUpdate,
+    IncidentTriageUpdate,
+)
+from app.services.incident_service import IncidentService
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-from app.services.incident_service import IncidentService
-from app.services.notification_service import NotificationService
-
-# ── Create Incident ───────────────────────────────────────────────────────────
+# â”€â”€ Create Incident â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.post("", status_code=http_status.HTTP_201_CREATED)
 def create_incident(
@@ -47,10 +50,10 @@ def create_incident(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create incident: {str(e)}",
-        )
+        ) from e
 
 
-# ── List Incidents (role-filtered) ────────────────────────────────────────────
+# â”€â”€ List Incidents (role-filtered) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("")
 def list_incidents(user: dict = Depends(get_current_user)):
@@ -86,7 +89,7 @@ def list_incidents(user: dict = Depends(get_current_user)):
                     .execute()
                 )
         else:
-            # authority — see all
+            # authority â€” see all
             res = (
                 db.table("incidents")
                 .select("*")
@@ -123,10 +126,10 @@ def list_incidents(user: dict = Depends(get_current_user)):
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch incidents: {str(e)}",
-        )
+        ) from e
 
 
-# ── Get Single Incident ───────────────────────────────────────────────────────
+# â”€â”€ Get Single Incident â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("/{incident_id}")
 def get_incident_by_id(
@@ -183,10 +186,10 @@ def get_incident_by_id(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch incident: {str(e)}",
-        )
+        ) from e
 
 
-# ── Upload Image ──────────────────────────────────────────────────────────────
+# â”€â”€ Upload Image â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -199,14 +202,14 @@ def upload_image(
 ):
     db: Client = get_supabase()
 
-    # ── Validate file type ──
+    # â”€â”€ Validate file type â”€â”€
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=http_status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Unsupported file type '{file.content_type}'. Allowed: JPEG, PNG, WEBP, GIF.",
         )
 
-    # ── Read file in chunks to prevent OOM from oversized uploads ──
+    # â”€â”€ Read file in chunks to prevent OOM from oversized uploads â”€â”€
     try:
         chunks = []
         total_read = 0
@@ -229,7 +232,7 @@ def upload_image(
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to read file: {str(e)}",
-        )
+        ) from e
 
     ext = (file.filename or "upload").rsplit(".", 1)[-1].lower()
     file_name = f"{uuid.uuid4()}.{ext}"
@@ -250,10 +253,10 @@ def upload_image(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Storage upload failed: {str(e)}",
-        )
+        ) from e
 
 
-# ── Update Incident Status ────────────────────────────────────────────────────
+# â”€â”€ Update Incident Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.put("/{incident_id}/status")
 def update_incident_status(
@@ -337,7 +340,7 @@ def update_incident_status(
             NotificationService.create_notification(
                 db, 
                 incident["citizen_id"], 
-                f"Incident Status Updated", 
+                "Incident Status Updated",
                 f"Your incident '{incident['title']}' is now {req.status}."
             )
             
@@ -354,13 +357,15 @@ def update_incident_status(
                 NotificationService.create_notification(
                     db,
                     notify_worker_id,
-                    f"New Assignment",
+                    "New Assignment",
                     f"You have been assigned to incident '{incident['title']}' ({incident['tracking_id']})."
                 )
                 
             # If resolved with an image, trigger resolution verification
             if req.status == "resolved" and req.resolution_image_url and incident.get("image_url"):
-                from app.ai.services.resolution_verification_service import ResolutionVerificationService
+                from app.ai.services.resolution_verification_service import (
+                    ResolutionVerificationService,
+                )
                 current_user_id = user["id"]
                 def background_verify():
                     try:
@@ -418,9 +423,9 @@ def update_incident_status(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update incident: {str(e)}",
-        )
+        ) from e
 
-# ── Update Incident Triage ───────────────────────────────────────────────────
+# â”€â”€ Update Incident Triage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.put("/{incident_id}/triage")
 def update_incident_triage(
@@ -457,14 +462,14 @@ def update_incident_triage(
         if hasattr(e, "response") and e.response is not None:
             err_msg += f" Response: {e.response.text}"
         elif hasattr(e, "details"):
-            err_msg += f" Details: {getattr(e, 'details')}"
+            err_msg += f" Details: {e.details}"
         logger.error(f"Failed to update incident triage: {err_msg}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update triage: {err_msg}",
-        )
+        ) from e
 
-# ── Get Incident Updates ──────────────────────────────────────────────────────
+# â”€â”€ Get Incident Updates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("/{incident_id}/updates")
 def get_incident_updates(
@@ -529,10 +534,10 @@ def get_incident_updates(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch updates: {str(e)}",
-        )
+        ) from e
 
 
-# ── Re-trigger AI Processing ─────────────────────────────────────────────────
+# â”€â”€ Re-trigger AI Processing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.post("/{incident_id}/reprocess")
 def reprocess_incident_ai(
@@ -590,4 +595,4 @@ def reprocess_incident_ai(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to re-trigger AI: {str(e)}",
-        )
+        ) from e

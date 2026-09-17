@@ -1,4 +1,5 @@
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
+
 from app.ai.models.graph_state import ComplaintGraphState
 
 
@@ -6,12 +7,12 @@ class CivicAIPipeline:
     def __init__(self):
         # Lazy-import services so they are only instantiated when the pipeline runs,
         # NOT at module import time (which would fail if GROQ_API_KEY isn't set yet).
-        from app.ai.services.transcription_service import TranscriptionService
-        from app.ai.services.vision_service import VisionAnalysisService
-        from app.ai.services.translation_service import TranslationService
         from app.ai.services.classification_service import ClassificationService
-        from app.ai.services.severity_scoring_service import SeverityScoringService
         from app.ai.services.department_routing_service import DepartmentRoutingService
+        from app.ai.services.severity_scoring_service import SeverityScoringService
+        from app.ai.services.transcription_service import TranscriptionService
+        from app.ai.services.translation_service import TranslationService
+        from app.ai.services.vision_service import VisionAnalysisService
 
         self.transcriber = TranscriptionService()
         self.vision = VisionAnalysisService()

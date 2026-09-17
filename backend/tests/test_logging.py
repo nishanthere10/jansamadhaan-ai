@@ -15,8 +15,9 @@ GOTCHAS TESTED
 7.  Noisy third-party loggers (httpx, supabase) are silenced to WARNING.
 """
 import logging
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestConfigureLogging:
@@ -98,8 +99,9 @@ class TestRequestLoggingMiddleware:
 
     @pytest.fixture()
     def app_client(self):
-        from app.main import app
         from fastapi.testclient import TestClient
+
+        from app.main import app
         with patch("app.core.database.get_supabase", return_value=MagicMock()):
             with TestClient(app, raise_server_exceptions=False) as c:
                 yield c

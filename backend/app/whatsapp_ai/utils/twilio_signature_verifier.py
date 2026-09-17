@@ -1,7 +1,8 @@
-import os
 import logging
-from twilio.request_validator import RequestValidator
+import os
+
 from fastapi import Request
+from twilio.request_validator import RequestValidator
 
 logger = logging.getLogger(__name__)
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "dummy_for_sandbox")

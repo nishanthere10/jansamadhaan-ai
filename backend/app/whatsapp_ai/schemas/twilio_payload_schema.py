@@ -4,8 +4,9 @@ FastAPI handles forms using Form() injection. This file serves to clearly
 define the expected fields.
 """
 
+
 from fastapi import Form
-from typing import Optional
+
 
 class TwilioPayload:
     """Dependency injection class for Twilio webhook."""
@@ -14,8 +15,8 @@ class TwilioPayload:
         From: str = Form(...),
         Body: str = Form(""),
         NumMedia: int = Form(0),
-        Latitude: Optional[float] = Form(None),
-        Longitude: Optional[float] = Form(None),
+        Latitude: float | None = Form(None),
+        Longitude: float | None = Form(None),
         MessageSid: str = Form(...),
     ):
         self.From = From

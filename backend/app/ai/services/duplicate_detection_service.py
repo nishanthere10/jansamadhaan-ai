@@ -12,7 +12,7 @@ import logging
 import math
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.database import get_supabase
 
@@ -56,7 +56,7 @@ def _geo_score(dist_m: float) -> float:
     return 0.0
 
 
-def _keyword_overlap(kw_a: List[str], kw_b: List[str]) -> float:
+def _keyword_overlap(kw_a: list[str], kw_b: list[str]) -> float:
     """Jaccard-like overlap of two keyword lists."""
     if not kw_a or not kw_b:
         return 0.0
@@ -83,17 +83,17 @@ class DuplicateDetectionService:
     """
 
     @classmethod
-    async def process(cls, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def process(cls, state: dict[str, Any]) -> dict[str, Any]:
         """
         Main entry point. Receives the pipeline state dict.
         Returns updated state dict with cluster metadata.
         """
         incident_id: str = state.get("incident_id", "")
-        category: Optional[str] = state.get("category")
-        department: Optional[str] = state.get("primary_department")
-        lat: Optional[float] = state.get("location_lat")
-        lng: Optional[float] = state.get("location_lng")
-        keywords: List[str] = state.get("keywords", [])
+        category: str | None = state.get("category")
+        department: str | None = state.get("primary_department")
+        lat: float | None = state.get("location_lat")
+        lng: float | None = state.get("location_lng")
+        keywords: list[str] = state.get("keywords", [])
 
         logger.info(f"[DuplicateDetection] Starting for incident {incident_id}")
 
@@ -124,7 +124,7 @@ class DuplicateDetectionService:
         logger.info(f"[DuplicateDetection] Found {len(candidates)} candidate(s) in DB")
 
         # 2. Score each candidate
-        best_match: Optional[Dict[str, Any]] = None
+        best_match: dict[str, Any] | None = None
         best_score: float = 0.0
 
         for cand in candidates:
@@ -193,8 +193,8 @@ class DuplicateDetectionService:
     async def _fetch_candidates(
         exclude_id: str,
         category: str,
-        department: Optional[str],
-    ) -> List[Dict[str, Any]]:
+        department: str | None,
+    ) -> list[dict[str, Any]]:
         """
         Query Supabase for recent, unresolved incidents with the same category.
         """
@@ -232,8 +232,8 @@ class DuplicateDetectionService:
         new_lat: float,
         new_lng: float,
         new_category: str,
-        new_keywords: List[str],
-        candidate: Dict[str, Any],
+        new_keywords: list[str],
+        candidate: dict[str, Any],
     ) -> float:
         """
         Composite similarity score between a new incident and a candidate.
@@ -251,7 +251,7 @@ class DuplicateDetectionService:
         cat_match = 1.0 if new_category.lower() in cand_cat or cand_cat in new_category.lower() else 0.0
 
         # C. Keyword overlap (from structured data if available)
-        cand_keywords: List[str] = []
+        cand_keywords: list[str] = []
         structured = candidate.get("ai_structured_data")
         if isinstance(structured, dict):
             cand_keywords = structured.get("extracted_keywords", [])
@@ -298,7 +298,7 @@ class DuplicateDetectionService:
             # 2. Update the PRIMARY incident — bump its duplicate count
             escalated_severity = _escalated_severity(new_dup_count)
 
-            primary_updates: Dict[str, Any] = {
+            primary_updates: dict[str, Any] = {
                 "duplicate_count": new_dup_count,
                 "cluster_id": cluster_id,
                 "is_primary_incident": True,

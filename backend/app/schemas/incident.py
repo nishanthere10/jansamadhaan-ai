@@ -1,6 +1,5 @@
-from pydantic import BaseModel, field_validator, ConfigDict
-from typing import Optional
-from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class IncidentCreateRequest(BaseModel):
@@ -9,15 +8,15 @@ class IncidentCreateRequest(BaseModel):
     title: str
     description: str
     category: str
-    severity: Optional[str] = "low"
-    location_lat: Optional[float] = None
-    location_lng: Optional[float] = None
-    address: Optional[str] = None
-    image_url: Optional[str] = None
+    severity: str | None = "low"
+    location_lat: float | None = None
+    location_lng: float | None = None
+    address: str | None = None
+    image_url: str | None = None
 
     @field_validator("severity")
     @classmethod
-    def validate_severity(cls, v: Optional[str]) -> Optional[str]:
+    def validate_severity(cls, v: str | None) -> str | None:
         if not v:
             return "low"
         v_clean = v.lower().strip().replace(" risk", "")
@@ -34,41 +33,41 @@ class IncidentResponse(BaseModel):
 
     id: str
     tracking_id: str
-    citizen_id: Optional[str] = None
-    user_id: Optional[str] = None
+    citizen_id: str | None = None
+    user_id: str | None = None
     title: str
     description: str
     category: str
     severity: str
     status: str
-    location_lat: Optional[float] = None
-    location_lng: Optional[float] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    address: Optional[str] = None
-    location_name: Optional[str] = None
-    image_url: Optional[str] = None
-    audio_url: Optional[str] = None
-    ai_summary: Optional[str] = None
-    assigned_to: Optional[str] = None
-    source: Optional[str] = None
+    location_lat: float | None = None
+    location_lng: float | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    address: str | None = None
+    location_name: str | None = None
+    image_url: str | None = None
+    audio_url: str | None = None
+    ai_summary: str | None = None
+    assigned_to: str | None = None
+    source: str | None = None
     created_at: str
-    updated_at: Optional[str] = None
-    cluster_id: Optional[str] = None
-    is_primary_incident: Optional[bool] = False
-    duplicate_count: Optional[int] = 0
+    updated_at: str | None = None
+    cluster_id: str | None = None
+    is_primary_incident: bool | None = False
+    duplicate_count: int | None = 0
     # Enriched fields returned by backend endpoints
-    citizen: Optional[dict] = None
-    worker: Optional[dict] = None
-    department: Optional[str] = None
-    ai_processing_status: Optional[str] = None
-    ai_vision_analysis: Optional[str] = None
-    ai_category: Optional[str] = None
-    ai_severity: Optional[str] = None
-    ai_department: Optional[str] = None
-    ai_confidence_score: Optional[float] = None
-    ai_structured_data: Optional[dict] = None
-    priority_score: Optional[float] = None
+    citizen: dict | None = None
+    worker: dict | None = None
+    department: str | None = None
+    ai_processing_status: str | None = None
+    ai_vision_analysis: str | None = None
+    ai_category: str | None = None
+    ai_severity: str | None = None
+    ai_department: str | None = None
+    ai_confidence_score: float | None = None
+    ai_structured_data: dict | None = None
+    priority_score: float | None = None
 
 
 class IncidentListResponse(BaseModel):
@@ -84,9 +83,9 @@ class IncidentStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     status: str
-    worker_id: Optional[str] = None
-    resolution_notes: Optional[str] = None
-    resolution_image_url: Optional[str] = None
+    worker_id: str | None = None
+    resolution_notes: str | None = None
+    resolution_image_url: str | None = None
 
     @field_validator("status")
     @classmethod
@@ -101,13 +100,13 @@ class IncidentStatusUpdate(BaseModel):
 class IncidentTriageUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    category: Optional[str] = None
-    severity: Optional[str] = None
-    department: Optional[str] = None
+    category: str | None = None
+    severity: str | None = None
+    department: str | None = None
 
     @field_validator("severity")
     @classmethod
-    def validate_severity(cls, v: Optional[str]) -> Optional[str]:
+    def validate_severity(cls, v: str | None) -> str | None:
         if not v:
             return v
         v_clean = v.lower().strip().replace(" risk", "")
@@ -127,8 +126,8 @@ class IncidentUpdateResponse(BaseModel):
     incident_id: str
     updated_by: str
     status: str
-    note: Optional[str] = None
-    before_image_url: Optional[str] = None
-    after_image_url: Optional[str] = None
+    note: str | None = None
+    before_image_url: str | None = None
+    after_image_url: str | None = None
     created_at: str
 

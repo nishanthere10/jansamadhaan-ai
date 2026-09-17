@@ -12,8 +12,9 @@ GOTCHAS TESTED
 5.  DNS / network error from create_client propagates as-is (not swallowed).
 6.  Happy path: valid credentials produce a Client object.
 """
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestGetSupabase:
@@ -94,8 +95,9 @@ class TestGetSupabase:
         swallowed. It should propagate so the caller (endpoint) can convert
         it to HTTP 503.
         """
-        from app.core.database import get_supabase
         import httpx
+
+        from app.core.database import get_supabase
 
         dns_error = httpx.ConnectError("[Errno 11001] getaddrinfo failed")
 

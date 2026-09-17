@@ -16,13 +16,15 @@ does NOT affect modules that already imported it. We must patch
 get_supabase at every call-site (e.g. `app.api.auth.get_supabase`).
 """
 import os
-import pytest
-from unittest.mock import MagicMock, patch
 from contextlib import ExitStack
-from fastapi.testclient import TestClient
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # ── Ensure .env is loaded before any app import ───────────────────────────────
 from dotenv import load_dotenv
+from fastapi.testclient import TestClient
+
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # All modules that do `from app.core.database import get_supabase`

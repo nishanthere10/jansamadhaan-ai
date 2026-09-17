@@ -1,10 +1,12 @@
 import logging
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from app.schemas.auth import SignupRequest, LoginRequest, AadharLoginRequest
-from app.core.database import get_supabase
 from supabase import Client
+
+from app.core.database import get_supabase
 from app.core.security import get_current_user
+from app.schemas.auth import AadharLoginRequest, LoginRequest, SignupRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -61,13 +63,13 @@ async def signup(req: SignupRequest):
         error_lower = error_msg.lower()
 
         if "already registered" in error_lower or "user already exists" in error_lower:
-            raise HTTPException(status_code=400, detail="An account with this email already exists.")
+            raise HTTPException(status_code=400, detail="An account with this email already exists.") from e
         if "getaddrinfo failed" in error_lower or "connection" in error_lower or "network" in error_lower:
             raise HTTPException(
                 status_code=503,
                 detail="Cannot reach the authentication server. Please check your network or Supabase project URL.",
-            )
-        raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}")
+            ) from e
+        raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}") from e
 
 @router.post("/aadhar-login")
 async def aadhar_login(req: AadharLoginRequest):
@@ -139,7 +141,7 @@ async def aadhar_login(req: AadharLoginRequest):
         raise
     except Exception as e:
         logger.exception("Aadhar login failed")
-        raise HTTPException(status_code=500, detail=f"Aadhar mock login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Aadhar mock login failed: {str(e)}") from e
 
 @router.post("/login")
 async def login(req: LoginRequest):
@@ -188,18 +190,18 @@ async def login(req: LoginRequest):
         logger.exception(f"Login failed for {req.email}")
         error_str = str(e).lower()
         if "invalid" in error_str or "credential" in error_str or "not found" in error_str:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+            raise HTTPException(status_code=401, detail="Invalid email or password") from e
         if "email not confirmed" in error_str:
             raise HTTPException(
                 status_code=403, 
                 detail="Email not confirmed. In Supabase Dashboard -> Authentication -> Providers -> Email, disable 'Confirm email' for local testing."
-            )
+            ) from e
         if "getaddrinfo failed" in error_str or "connection" in error_str or "network" in error_str:
             raise HTTPException(
                 status_code=503,
                 detail="Cannot reach the authentication server. Please check your network or Supabase project URL.",
-            )
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+            ) from e
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}") from e
 
 @router.post("/logout")
 def logout(user: dict = Depends(get_current_user)):

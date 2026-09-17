@@ -1,15 +1,15 @@
 import logging
 import uuid
-from typing import Optional
+
 from app.core.database import get_supabase
-from app.whatsapp_ai.utils.whatsapp_media_downloader import WhatsAppMediaDownloader
 from app.whatsapp_ai.utils.whatsapp_constants import SUPPORTED_MEDIA_TYPES
+from app.whatsapp_ai.utils.whatsapp_media_downloader import WhatsAppMediaDownloader
 
 logger = logging.getLogger(__name__)
 
 class WhatsAppMediaService:
     @staticmethod
-    def process_and_upload_media(media_url: str, media_type: str) -> Optional[str]:
+    def process_and_upload_media(media_url: str, media_type: str) -> str | None:
         """
         Downloads media from Twilio and uploads it to Supabase Storage.
         Returns the public Supabase URL, or None if failed/unsupported.
@@ -25,7 +25,8 @@ class WhatsAppMediaService:
             # 2. Upload to Supabase
             db = get_supabase()
             ext = media_type.split("/")[-1]
-            if ext == "jpeg": ext = "jpg"
+            if ext == "jpeg":
+                ext = "jpg"
             file_name = f"whatsapp_{uuid.uuid4()}.{ext}"
             
             # Bucket logic - assuming 'grievance_images' is dual-purpose for audio/video too,

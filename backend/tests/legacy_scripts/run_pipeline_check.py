@@ -1,14 +1,14 @@
 """Direct test of the AI pipeline to find the exact crash point."""
-import os
-import sys
 import asyncio
 import logging
+import sys
 
 # Setup logging to see everything
 logging.basicConfig(level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 
 # Load env
 from dotenv import load_dotenv
+
 load_dotenv('backend/.env')
 
 # Add backend to path

@@ -1,5 +1,7 @@
 import logging
-from fastapi import APIRouter, Request, BackgroundTasks, Response, status, HTTPException
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
+
 from app.whatsapp_ai.services.twilio_webhook_service import TwilioWebhookService
 
 logger = logging.getLogger(__name__)

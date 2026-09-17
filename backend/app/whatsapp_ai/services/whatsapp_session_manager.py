@@ -13,8 +13,8 @@ Sessions auto-expire after 30 minutes of inactivity.
 
 import logging
 import time
-from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +26,11 @@ SESSION_TIMEOUT = 30 * 60
 class ConversationSession:
     phone_number: str
     step: str = "AWAITING_DESCRIPTION"
-    description: Optional[str] = None
-    image_url: Optional[str] = None
-    audio_url: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
+    description: str | None = None
+    image_url: str | None = None
+    audio_url: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -43,14 +43,14 @@ class ConversationSession:
 
 
 # In-memory session store (phone_number -> ConversationSession)
-_sessions: Dict[str, ConversationSession] = {}
+_sessions: dict[str, ConversationSession] = {}
 
 
 class WhatsAppSessionManager:
     """Manages conversation sessions for WhatsApp users."""
 
     @staticmethod
-    def get_session(phone_number: str) -> Optional[ConversationSession]:
+    def get_session(phone_number: str) -> ConversationSession | None:
         """Get an active session for a phone number, or None if expired/missing."""
         session = _sessions.get(phone_number)
         if session and session.is_expired():
@@ -68,7 +68,7 @@ class WhatsAppSessionManager:
         return session
 
     @staticmethod
-    def update_session(phone_number: str, **kwargs) -> Optional[ConversationSession]:
+    def update_session(phone_number: str, **kwargs) -> ConversationSession | None:
         """Update session fields and touch the timestamp."""
         session = _sessions.get(phone_number)
         if not session:
@@ -87,7 +87,7 @@ class WhatsAppSessionManager:
             logger.info(f"Session cleared for {phone_number}")
 
     @staticmethod
-    def get_session_data(phone_number: str) -> Optional[Dict[str, Any]]:
+    def get_session_data(phone_number: str) -> dict[str, Any] | None:
         """Get all collected data from the session as a dict."""
         session = _sessions.get(phone_number)
         if not session:

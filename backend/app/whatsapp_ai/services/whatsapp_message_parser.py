@@ -1,6 +1,7 @@
 import logging
-from typing import Optional
+
 from fastapi import Request
+
 from app.whatsapp_ai.schemas.whatsapp_message_schema import WhatsAppMessageSchema
 from app.whatsapp_ai.utils.whatsapp_constants import SUPPORTED_MEDIA_TYPES
 

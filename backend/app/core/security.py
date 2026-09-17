@@ -1,6 +1,10 @@
-from fastapi import Header, HTTPException, Depends
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
+from fastapi import Header
+
 from app.core.database import get_supabase
-from supabase import Client
 
 # --- LOCAL DEV USER PROFILES ---
 DEV_AUTHORITY = {
@@ -86,10 +90,6 @@ def get_current_user(authorization: str = Header(None)) -> dict:
         # Fallback to dev user instead of blocking with 401
         return DEV_AUTHORITY
 
-
-import ipaddress
-import socket
-from urllib.parse import urlparse
 
 def is_safe_image_url(url: str) -> bool:
     """Validate that an image URL targets a public web resource and prevent SSRF."""

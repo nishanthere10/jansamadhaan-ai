@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Any
+from typing import Any
+
 from app.core.database import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ class TrustScoringService:
     """
     
     @classmethod
-    async def process(cls, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def process(cls, state: dict[str, Any]) -> dict[str, Any]:
         logger.info("🔧 [Phase 4] TrustScoringService running for Citizen...")
         user_id = state.get("citizen_id")
         

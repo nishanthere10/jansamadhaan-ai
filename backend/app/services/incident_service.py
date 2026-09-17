@@ -1,9 +1,9 @@
-from supabase import Client
-from fastapi import BackgroundTasks
-import time
-import secrets
 import logging
-from typing import Optional
+import secrets
+import time
+
+from fastapi import BackgroundTasks
+from supabase import Client
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +21,11 @@ class IncidentService:
         description: str,
         category: str,
         severity: str = "low",
-        location_lat: Optional[float] = None,
-        location_lng: Optional[float] = None,
-        address: Optional[str] = None,
-        image_url: Optional[str] = None,
-        audio_url: Optional[str] = None,
+        location_lat: float | None = None,
+        location_lng: float | None = None,
+        address: str | None = None,
+        image_url: str | None = None,
+        audio_url: str | None = None,
         source: str = "app"
     ) -> dict:
         """
@@ -77,4 +77,4 @@ class IncidentService:
             }
         except Exception as e:
             logger.exception("Failed to create incident in IncidentService")
-            raise Exception(f"Failed to create incident: {str(e)}")
+            raise Exception(f"Failed to create incident: {str(e)}") from e

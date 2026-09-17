@@ -1,0 +1,35 @@
+# Pinned ruff ruleset for the Jan Samadhan backend.
+# ruff >= 0.16 ships a much broader default selection (isort, pyupgrade, bugbear,
+# flake8-simplify, ...). Pinning explicitly so a tool upgrade can never silently
+# change what CI enforces.
+target-version = "py310"
+
+[lint]
+select = [
+    "E4",  # pycodestyle: import-related errors (E401, E402, ...)
+    "E7",  # pycodestyle: statement errors (E7xx)
+    "E9",  # pycodestyle: runtime/syntax errors (E9xx)
+    "F",   # pyflakes: unused imports/variables, f-strings, redefinitions
+    "I",   # isort: import ordering
+    "B",   # bugbear: real-bug-prone patterns
+    "UP",  # pyupgrade: modernize annotations (List -> list, Optional -> | None)
+]
+ignore = [
+    # FastAPI idiom: Depends(...) / Security(...) in parameter defaults.
+    "B008",
+]
+
+[lint.per-file-ignores]
+# main.py: load_dotenv() MUST run before importing app modules that read env at
+# import time (app.core.config.settings, logging config). Ordering is intentional.
+"app/main.py" = ["E402"]
+# tests/legacy_scripts/: manual diagnostic entry points that configure sys.path
+# and load backend/.env before importing the app package. Ordering is intentional.
+"tests/legacy_scripts/*.py" = ["E402"]
+# vulture_whitelist.py is not Python code in the normal sense: it is vulture's
+# "these names are deliberately used" manifest (bare-name lines). It is excluded
+# from ruff; pytest never collects it (name doesn't match test_*.py).
+"vulture_whitelist.py" = ["ALL"]
+
+[lint.isort]
+known-first-party = ["app"]

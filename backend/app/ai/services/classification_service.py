@@ -1,8 +1,10 @@
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_groq import ChatGroq
-from app.ai.models.graph_state import ComplaintGraphState
-import os
 import logging
+import os
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_groq import ChatGroq
+
+from app.ai.models.graph_state import ComplaintGraphState
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ class ClassificationService:
         if vision_analysis:
             content += f"VISION ANALYSIS (Objective visual evidence): {vision_analysis}\n"
             if is_relevant is False:
-                content += f"**SYSTEM ALERT**: The vision model flagged this image as IRRELEVANT. You MUST mark this as spam and specify the exact image content in the reason."
+                content += "**SYSTEM ALERT**: The vision model flagged this image as IRRELEVANT. You MUST mark this as spam and specify the exact image content in the reason."
 
         messages = [
             SystemMessage(content=system_prompt),
@@ -65,7 +67,7 @@ class ClassificationService:
                 "spam_score": response.spam_score,
                 "spam_reason": response.spam_reason
             }
-        except Exception as e:
+        except Exception:
             logger.exception("Classification failed")
             # Crash-resistant fallback so the rest of the application doesn't break
             return {
