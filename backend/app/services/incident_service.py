@@ -39,6 +39,7 @@ class IncidentService:
         insert_data = {
             "tracking_id": tracking_id,
             "citizen_id": citizen_id,
+            "user_id": citizen_id,  # Mirror to user_id (FK to auth.users(id))
             "title": title,
             "description": description,
             "category": category,
@@ -46,11 +47,12 @@ class IncidentService:
             "status": "pending",
             "location_lat": location_lat,
             "location_lng": location_lng,
+            "latitude": location_lat,   # Mirror to latitude
+            "longitude": location_lng, # Mirror to longitude
             "address": address,
+            "location_name": address,  # Mirror to location_name
             "image_url": image_url
         }
-        # Note: audio_url isn't part of the incidents schema right now, 
-        # but it is needed by the AI pipeline for transcription.
 
         try:
             res = db.table("incidents").insert(insert_data).execute()

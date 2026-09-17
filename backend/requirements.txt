@@ -2,10 +2,14 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
+email-validator
 python-multipart
+python-dotenv
+requests
 supabase
 langgraph
 langchain
 langchain-groq
 langchain-core
 groq
+twilio

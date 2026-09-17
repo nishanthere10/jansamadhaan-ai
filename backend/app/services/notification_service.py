@@ -14,6 +14,8 @@ class NotificationService:
         message: str
     ) -> Optional[dict]:
         """Creates a push/in-app notification for a targeted user."""
+        if not user_id:
+            return None
         try:
             data = {
                 "user_id": user_id,

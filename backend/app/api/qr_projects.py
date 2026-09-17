@@ -3,6 +3,7 @@ QR Projects API — CivicResponse AI
 Authority-managed transparent public projects with scannable QR codes.
 """
 
+import os
 from fastapi import APIRouter, Depends, HTTPException, status as http_status
 from app.core.database import get_supabase
 from app.core.security import get_current_user
@@ -53,9 +54,10 @@ def create_project(
 
         # Auto-generate QR code URL pointing to the public tracker page
         project_id = project["id"]
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
         qr_url = (
             f"https://api.qrserver.com/v1/create-qr-code/"
-            f"?size=150x150&data=https://civic-response.ai/track/{project_id}"
+            f"?size=150x150&data={frontend_url}/track/{project_id}"
         )
         db.table("qr_projects").update({"qr_code_url": qr_url}).eq("id", project_id).execute()
         project["qr_code_url"] = qr_url
@@ -85,4 +87,25 @@ def list_projects():
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch projects: {str(e)}",
+        )
+
+
+# ── Get Single Project (public) ───────────────────────────────────────────────
+
+@router.get("/{project_id}")
+def get_project(project_id: str):
+    """Public endpoint — fetch single QR project by ID for transparency tracking."""
+    db: Client = get_supabase()
+    try:
+        res = db.table("qr_projects").select("*").eq("id", project_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Project not found")
+        return {"success": True, "message": "Project fetched successfully", "data": res.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to fetch QR project {project_id}")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch project: {str(e)}",
         )

@@ -308,17 +308,32 @@ class DuplicateDetectionService:
             severity_order = ["Low Risk", "Medium Risk", "High Risk", "Emergency"]
             # Fetch current severity to check if we should escalate
             try:
-                current = db.table("incidents").select("ai_severity").eq("id", primary_id).single().execute()
-                current_sev = (current.data or {}).get("ai_severity", "Low Risk")
+                current = db.table("incidents").select("ai_severity").eq("id", primary_id).execute()
+                current_sev = (current.data[0].get("ai_severity") or "Low Risk") if current.data else "Low Risk"
                 current_idx = severity_order.index(current_sev) if current_sev in severity_order else 0
                 new_idx = severity_order.index(escalated_severity) if escalated_severity in severity_order else 0
                 if new_idx > current_idx:
                     primary_updates["ai_severity"] = escalated_severity
-                    logger.info(f"[DuplicateDetection] Escalating primary {primary_id} severity to {escalated_severity}")
-            except Exception:
+                    clean_esc = escalated_severity.lower().replace(" risk", "").strip()
+                    norm_esc = "critical" if clean_esc in ("emergency", "critical") else clean_esc
+                    primary_updates["severity"] = norm_esc
+                    logger.info(f"[DuplicateDetection] Escalating primary {primary_id} severity to {escalated_severity} ({norm_esc})")
+            except Exception as esc_err:
+                logger.warning(f"[DuplicateDetection] Severity escalation check fallback: {esc_err}")
                 primary_updates["ai_severity"] = escalated_severity
 
             db.table("incidents").update(primary_updates).eq("id", primary_id).execute()
+
+            # 3. Record duplicate link in public.duplicate_complaints table
+            try:
+                db.table("duplicate_complaints").insert({
+                    "incident_id": primary_id,
+                    "duplicate_incident_id": incident_id,
+                    "similarity_score": 0.85,
+                    "detection_reason": f"AI cluster match attached to primary incident {primary_id}",
+                }).execute()
+            except Exception as dup_table_err:
+                logger.warning(f"[DuplicateDetection] Could not insert into duplicate_complaints: {dup_table_err}")
 
             logger.info(
                 f"[DuplicateDetection] Attached {incident_id} to cluster {cluster_id} "

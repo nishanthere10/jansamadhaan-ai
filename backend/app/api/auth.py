@@ -1,51 +1,72 @@
+import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from app.schemas.auth import SignupRequest, LoginRequest, AadharLoginRequest
-import uuid
 from app.core.database import get_supabase
 from supabase import Client
 from app.core.security import get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/signup")
 async def signup(req: SignupRequest):
     db: Client = get_supabase()
     try:
-        # Create user in Supabase Auth
+        # supabase-py v2: sign_up accepts a plain dict with email/password
+        # options.data holds user_metadata (stored on the auth.users row)
         auth_res = db.auth.sign_up({
             "email": req.email,
-            "password": req.password
+            "password": req.password,
+            "options": {
+                "data": {
+                    "full_name": req.full_name,
+                    "phone": req.phone,
+                }
+            }
         })
-        
+
         if not auth_res.user:
             raise HTTPException(status_code=400, detail="Failed to create authentication account")
-            
+
         user_id = auth_res.user.id
-        
-        # Insert profile into our 'users' table
+
+        # Force citizen role for public self-registration (prevent privilege escalation)
         profile_data = {
             "id": user_id,
             "full_name": req.full_name,
             "email": req.email,
             "phone": req.phone,
-            "role": req.role
+            "role": "citizen",
         }
-        
-        db.table("users").insert(profile_data).execute()
-        
+
+        # Upsert into public.users table
+        upsert_res = db.table("users").upsert(profile_data).execute()
+        logger.info(f"Profile upserted for {req.email}: {upsert_res.data}")
+
         return {
             "success": True,
-            "message": "User created successfully",
+            "message": "User created successfully. Please check your email to confirm your account.",
             "data": {
                 "id": user_id,
                 "email": req.email,
-                "role": req.role
-            }
+                "role": "citizen",
+            },
         }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception(f"Signup failed for {req.email}")
         error_msg = str(e)
-        if "already registered" in error_msg.lower():
-            raise HTTPException(status_code=400, detail="An account with this email already exists")
+        error_lower = error_msg.lower()
+
+        if "already registered" in error_lower or "user already exists" in error_lower:
+            raise HTTPException(status_code=400, detail="An account with this email already exists.")
+        if "getaddrinfo failed" in error_lower or "connection" in error_lower or "network" in error_lower:
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot reach the authentication server. Please check your network or Supabase project URL.",
+            )
         raise HTTPException(status_code=500, detail=f"Registration failed: {error_msg}")
 
 @router.post("/aadhar-login")
@@ -65,14 +86,33 @@ async def aadhar_login(req: AadharLoginRequest):
         existing = db.table("users").select("*").eq("id", mock_user_id).execute()
 
         if not existing.data:
-            # First time — insert a profile row directly (no Supabase Auth needed)
-            db.table("users").insert({
-                "id": mock_user_id,
-                "full_name": mock_full_name,
-                "email": f"citizen-{aadhar[:4]}@jansamadhan.demo",
-                "phone": f"+91{aadhar[:10]}",
-                "role": "citizen"
-            }).execute()
+            mock_email = f"citizen-{aadhar[:4]}@jansamadhan.demo"
+            # Public.users(id) references auth.users(id) via foreign key.
+            # Create the auth user first to satisfy the FK constraint.
+            try:
+                auth_res = db.auth.admin.create_user({
+                    "id": mock_user_id,
+                    "email": mock_email,
+                    "password": f"AadharPass@{aadhar[:6]}#",
+                    "email_confirm": True,
+                    "user_metadata": {"full_name": mock_full_name, "role": "citizen"}
+                })
+                if auth_res and auth_res.user:
+                    mock_user_id = auth_res.user.id
+            except Exception as auth_err:
+                logger.warning(f"Could not provision auth.users row for Aadhar user: {auth_err}")
+
+            try:
+                db.table("users").insert({
+                    "id": mock_user_id,
+                    "full_name": mock_full_name,
+                    "email": mock_email,
+                    "phone": f"+91{aadhar[:10]}",
+                    "role": "citizen"
+                }).execute()
+            except Exception as ins_err:
+                logger.warning(f"Could not insert Aadhar citizen into public.users: {ins_err}")
+
             profile_data = {"full_name": mock_full_name, "role": "citizen"}
         else:
             profile_data = existing.data[0]
@@ -95,7 +135,10 @@ async def aadhar_login(req: AadharLoginRequest):
                 }
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("Aadhar login failed")
         raise HTTPException(status_code=500, detail=f"Aadhar mock login failed: {str(e)}")
 
 @router.post("/login")
@@ -110,9 +153,23 @@ async def login(req: LoginRequest):
         if not auth_res.user or not auth_res.session:
             raise HTTPException(status_code=401, detail="Invalid email or password")
             
-        # Fetch profile
-        profile = db.table("users").select("*").eq("id", auth_res.user.id).single().execute()
+        # Fetch profile safely without throwing PGRST116
+        profile_res = db.table("users").select("*").eq("id", auth_res.user.id).execute()
+        profile_data = profile_res.data[0] if profile_res.data else None
         
+        # If user profile not in users table yet, create it on the fly
+        if not profile_data:
+            profile_data = {
+                "id": auth_res.user.id,
+                "full_name": req.email.split("@")[0].capitalize(),
+                "email": req.email,
+                "role": "authority" if ("gov" in req.email or "admin" in req.email) else "citizen"
+            }
+            try:
+                db.table("users").insert(profile_data).execute()
+            except Exception as ins_err:
+                logger.warning(f"Could not auto-create profile for {req.email}: {ins_err}")
+
         return {
             "success": True,
             "message": "Login successful",
@@ -120,14 +177,28 @@ async def login(req: LoginRequest):
                 "access_token": auth_res.session.access_token,
                 "user": {
                     "id": auth_res.user.id,
-                    "full_name": profile.data.get("full_name"),
-                    "role": profile.data.get("role")
+                    "full_name": profile_data.get("full_name") or req.email.split("@")[0],
+                    "role": profile_data.get("role") or "citizen"
                 }
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        if "invalid login credentials" in str(e).lower():
+        logger.exception(f"Login failed for {req.email}")
+        error_str = str(e).lower()
+        if "invalid" in error_str or "credential" in error_str or "not found" in error_str:
             raise HTTPException(status_code=401, detail="Invalid email or password")
+        if "email not confirmed" in error_str:
+            raise HTTPException(
+                status_code=403, 
+                detail="Email not confirmed. In Supabase Dashboard -> Authentication -> Providers -> Email, disable 'Confirm email' for local testing."
+            )
+        if "getaddrinfo failed" in error_str or "connection" in error_str or "network" in error_str:
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot reach the authentication server. Please check your network or Supabase project URL.",
+            )
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 @router.post("/logout")

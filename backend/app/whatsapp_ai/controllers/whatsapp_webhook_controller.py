@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Request, BackgroundTasks, Response, status
+from fastapi import APIRouter, Request, BackgroundTasks, Response, status, HTTPException
 from app.whatsapp_ai.services.twilio_webhook_service import TwilioWebhookService
 
 logger = logging.getLogger(__name__)
@@ -15,10 +15,6 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
     reply_text = ""
 
     try:
-        raw_form = await request.form()
-        import json
-        with open("twilio_debug.txt", "w") as f:
-            f.write(json.dumps(dict(raw_form), indent=2))
             
         result = await TwilioWebhookService.process_webhook(request, background_tasks)
         step = result.get("status", "")
@@ -94,6 +90,8 @@ async def handle_whatsapp_webhook(request: Request, background_tasks: Background
         else:
             reply_text = "⚠️ Something went wrong. Type *new* to start a fresh complaint."
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error handling webhook: {e}", exc_info=True)
         reply_text = (

@@ -6,7 +6,7 @@ class SignupRequest(BaseModel):
     email: EmailStr
     phone: str
     password: str
-    role: str
+    role: Optional[str] = "citizen"  # Always overridden to 'citizen' server-side
 
 class LoginRequest(BaseModel):
     email: EmailStr

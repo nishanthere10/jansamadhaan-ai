@@ -59,6 +59,17 @@ class TrustScoringService:
             except Exception as update_err:
                 logger.warning(f"Failed to save trust score to users table: {update_err}")
 
+            # Record audit log in public.trust_scores table
+            try:
+                db.table("trust_scores").insert({
+                    "entity_type": "citizen",
+                    "entity_id": user_id,
+                    "score": final_score,
+                    "score_reason": f"Calculated from {resolved_count} resolved and {rejected_count} rejected reports",
+                }).execute()
+            except Exception as ts_err:
+                logger.warning(f"Failed to save trust score history: {ts_err}")
+
             return {"trust_score": final_score, "is_verified": is_verified}
             
         except Exception as e:

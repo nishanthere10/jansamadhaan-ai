@@ -37,12 +37,21 @@ class VisionAnalysisService:
         logger.info(f"Starting Vision Analysis for image: {image_url}")
         
         try:
-            # 1. Fetch image directly to bypass 403 restriction from Groq crawler
-            response = requests.get(image_url, timeout=10)
-            response.raise_for_status()
-            content_type = response.headers.get('content-type', 'image/jpeg')
-            base64_image = base64.b64encode(response.content).decode("utf-8")
-            base64_url = f"data:{content_type};base64,{base64_image}"
+            if image_url.startswith("data:image/"):
+                base64_url = image_url
+            else:
+                # 1. Validate image URL to prevent SSRF
+                from app.core.security import is_safe_image_url
+                if not is_safe_image_url(image_url):
+                    logger.warning(f"Rejected potentially unsafe image URL: {image_url}")
+                    return {"vision_analysis": "Image URL validation failed."}
+
+                # 2. Fetch image directly to bypass 403 restriction from Groq crawler
+                response = requests.get(image_url, timeout=10)
+                response.raise_for_status()
+                content_type = response.headers.get('content-type', 'image/jpeg')
+                base64_image = base64.b64encode(response.content).decode("utf-8")
+                base64_url = f"data:{content_type};base64,{base64_image}"
 
             lat = state.get("location_lat")
             lng = state.get("location_lng")

@@ -8,9 +8,10 @@ Flow:
   4. User sends location OR "skip" → Bot creates incident with ALL collected data
 """
 
+import os
 import logging
 import re
-from fastapi import Request, BackgroundTasks
+from fastapi import Request, BackgroundTasks, HTTPException
 from app.core.database import get_supabase
 
 # Utilities
@@ -48,6 +49,8 @@ class TwilioWebhookService:
         # 1. Verify Signature
         is_valid = await TwilioSignatureVerifier.verify_request(request)
         if not is_valid:
+            if os.getenv("ENVIRONMENT") == "production":
+                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
             logger.warning("Invalid Twilio signature — processing anyway in dev mode.")
 
         # 2. Parse Payload

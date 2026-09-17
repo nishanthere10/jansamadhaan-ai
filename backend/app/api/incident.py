@@ -68,13 +68,23 @@ def list_incidents(user: dict = Depends(get_current_user)):
                 .execute()
             )
         elif user["role"] == "worker":
-            res = (
-                db.table("incidents")
-                .select("*")
-                .eq("assigned_to", user["id"])
-                .order("created_at", desc=True)
-                .execute()
-            )
+            try:
+                res = (
+                    db.table("incidents")
+                    .select("*")
+                    .eq("assigned_to", user["id"])
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+            except Exception as w_err:
+                logger.warning(f"Could not filter incidents by assigned_to (column may not exist): {w_err}")
+                res = (
+                    db.table("incidents")
+                    .select("*")
+                    .order("created_at", desc=True)
+                    .limit(50)
+                    .execute()
+                )
         else:
             # authority — see all
             res = (
@@ -113,6 +123,66 @@ def list_incidents(user: dict = Depends(get_current_user)):
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch incidents: {str(e)}",
+        )
+
+
+# ── Get Single Incident ───────────────────────────────────────────────────────
+
+@router.get("/{incident_id}")
+def get_incident_by_id(
+    incident_id: str,
+    user: dict = Depends(get_current_user),
+):
+    db: Client = get_supabase()
+    try:
+        res = db.table("incidents").select("*").eq("id", incident_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Incident not found")
+
+        incident = res.data[0]
+
+        # Security check: citizens can only view their own incidents
+        if user["role"] == "citizen" and incident.get("citizen_id") != user["id"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this incident"
+            )
+
+        # Security check: workers can only view their assigned incidents (if assigned_to is set)
+        if user["role"] == "worker" and incident.get("assigned_to") and incident.get("assigned_to") != user["id"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to view this incident"
+            )
+
+        # Attach citizen details
+        c_id = incident.get("citizen_id")
+        if c_id:
+            users_res = db.table("users").select("id, full_name, email, phone").eq("id", c_id).execute()
+            incident["citizen"] = users_res.data[0] if users_res.data else None
+        else:
+            incident["citizen"] = None
+
+        # Attach assigned worker details
+        w_id = incident.get("assigned_to")
+        if w_id:
+            worker_res = db.table("users").select("id, full_name, email, department").eq("id", w_id).execute()
+            incident["worker"] = worker_res.data[0] if worker_res.data else None
+        else:
+            incident["worker"] = None
+
+        return {
+            "success": True,
+            "message": "Incident fetched successfully",
+            "data": incident,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to fetch incident {incident_id}")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch incident: {str(e)}",
         )
 
 
@@ -194,34 +264,69 @@ def update_incident_status(
 ):
     db: Client = get_supabase()
     role = user["role"]
-
     if role not in ("authority", "worker"):
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Only authority or worker accounts can update incident status.",
         )
 
-    update_data: dict = {"status": req.status, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if role == "worker":
+        # BOLA protection: worker can only update incidents assigned to them
+        check = db.table("incidents").select("assigned_to").eq("id", incident_id).execute()
+        if check.data and check.data[0].get("assigned_to") and check.data[0].get("assigned_to") != user["id"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Workers can only update incidents assigned to them.",
+            )
+
+    # Note: 'updated_at' is omitted because public.incidents has no updated_at column in the SQL schema
+    update_data: dict = {"status": req.status}
 
     if role == "authority" and req.worker_id:
         if req.worker_id.startswith("mock-"):
             real_workers = db.table("users").select("id").eq("role", "worker").limit(1).execute()
             if real_workers.data:
                 update_data["assigned_to"] = real_workers.data[0]["id"]
+            else:
+                demo_worker_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, req.worker_id))
+                try:
+                    db.table("users").upsert({
+                        "id": demo_worker_id,
+                        "full_name": "Field Operations Unit",
+                        "email": "worker.field@jansamadhan.gov.in",
+                        "role": "worker",
+                        "department": "Public Works (PWD)"
+                    }).execute()
+                    update_data["assigned_to"] = demo_worker_id
+                except Exception as seed_err:
+                    logger.warning(f"Could not auto-seed worker: {seed_err}")
         else:
             update_data["assigned_to"] = req.worker_id
 
     try:
-        db.table("incidents").update(update_data).eq("id", incident_id).execute()
+        try:
+            db.table("incidents").update(update_data).eq("id", incident_id).execute()
+        except Exception as upd_err:
+            # If assigned_to column does not exist in the incidents table, update status without it
+            if "assigned_to" in update_data and ("column" in str(upd_err).lower() or "assigned_to" in str(upd_err).lower()):
+                logger.warning(f"assigned_to column not in incidents table; updating status without assigned_to: {upd_err}")
+                safe_update = {k: v for k, v in update_data.items() if k != "assigned_to"}
+                db.table("incidents").update(safe_update).eq("id", incident_id).execute()
+            else:
+                raise
 
-        update_log = {
-            "incident_id": incident_id,
-            "updated_by": user["id"],
-            "status": req.status,
-            "note": req.resolution_notes,
-            "after_image_url": req.resolution_image_url,
-        }
-        db.table("incident_updates").insert(update_log).execute()
+        # Best-effort insert into incident_updates (table may not exist in all Supabase setups)
+        try:
+            update_log = {
+                "incident_id": incident_id,
+                "updated_by": user["id"],
+                "status": req.status,
+                "note": req.resolution_notes,
+                "after_image_url": req.resolution_image_url,
+            }
+            db.table("incident_updates").insert(update_log).execute()
+        except Exception as log_err:
+            logger.warning(f"Could not insert incident_updates row (table may not exist): {log_err}")
 
         # Fetch incident to know who to notify
         inc_res = db.table("incidents").select("title, citizen_id, tracking_id, image_url").eq("id", incident_id).execute()
@@ -256,6 +361,7 @@ def update_incident_status(
             # If resolved with an image, trigger resolution verification
             if req.status == "resolved" and req.resolution_image_url and incident.get("image_url"):
                 from app.ai.services.resolution_verification_service import ResolutionVerificationService
+                current_user_id = user["id"]
                 def background_verify():
                     try:
                         verification = ResolutionVerificationService.verify_resolution(
@@ -263,13 +369,40 @@ def update_incident_status(
                             after_url=req.resolution_image_url,
                             incident_title=incident["title"]
                         )
-                        # We can store the review notes in another update or DB field
-                        db.table("incident_updates").insert({
-                            "incident_id": incident_id,
-                            "updated_by": "00000000-0000-0000-0000-000000000000", # System user
-                            "status": "verified" if verification["resolution_verified"] else "rejected_by_ai",
-                            "note": f"AI Verification: {verification['notes']} (Confidence: {verification['confidence']})"
-                        }).execute()
+                        is_verified = bool(verification.get("resolution_verified", False))
+                        confidence = float(verification.get("confidence", 0.0))
+                        status_label = "resolved" if is_verified else "in-progress"
+
+                        # 1. Record in public.resolution_verifications (matches database schema)
+                        try:
+                            db.table("resolution_verifications").insert({
+                                "incident_id": incident_id,
+                                "before_image_url": incident.get("image_url"),
+                                "after_image_url": req.resolution_image_url,
+                                "verification_score": confidence,
+                                "verification_status": "verified" if is_verified else "rejected",
+                                "manual_review_required": not is_verified,
+                            }).execute()
+                        except Exception as rv_err:
+                            logger.warning(f"Could not record resolution_verification row: {rv_err}")
+
+                        # 2. Try recording in incident_updates if table exists
+                        try:
+                            db.table("incident_updates").insert({
+                                "incident_id": incident_id,
+                                "updated_by": current_user_id,
+                                "status": status_label,
+                                "note": f"AI Verification: {verification.get('notes', '')} (Confidence: {confidence})"
+                            }).execute()
+                        except Exception:
+                            pass
+
+                        if not is_verified:
+                            # Revert incident back to in-progress so field work can be completed
+                            db.table("incidents").update({
+                                "status": "in-progress"
+                            }).eq("id", incident_id).execute()
+                            logger.info(f"Reverted incident {incident_id} to in-progress due to unverified resolution proof.")
                     except Exception as e:
                         logger.error(f"Background verification failed: {e}")
                 
@@ -303,13 +436,14 @@ def update_incident_triage(
         )
 
     try:
-        update_data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+        update_data = {}
         if req.category is not None:
             update_data["category"] = req.category
         if req.severity is not None:
             update_data["severity"] = req.severity
         if req.department is not None:
-            update_data["department"] = req.department
+            # Note: in schema, column is 'ai_department'
+            update_data["ai_department"] = req.department
             
         db.table("incidents").update(update_data).eq("id", incident_id).execute()
         return {
@@ -324,7 +458,7 @@ def update_incident_triage(
             err_msg += f" Response: {e.response.text}"
         elif hasattr(e, "details"):
             err_msg += f" Details: {getattr(e, 'details')}"
-        logger.error(f"Failed to update incident triage: {err_msg}\\n{traceback.format_exc()}")
+        logger.error(f"Failed to update incident triage: {err_msg}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update triage: {err_msg}",
@@ -339,20 +473,57 @@ def get_incident_updates(
 ):
     db: Client = get_supabase()
     try:
-        # Fetch the updates for this incident, ordered by creation time
-        # We also might want to join the 'updated_by' user if possible, but for now we'll just return raw updates
-        res = (
-            db.table("incident_updates")
-            .select("*")
-            .eq("incident_id", incident_id)
-            .order("created_at", desc=False)
-            .execute()
-        )
-        return {
-            "success": True,
-            "message": "Incident updates fetched successfully",
-            "data": res.data,
-        }
+        # Security check: citizen can only view updates for their own incident
+        if user["role"] == "citizen":
+            inc_check = db.table("incidents").select("citizen_id").eq("id", incident_id).execute()
+            if not inc_check.data or inc_check.data[0].get("citizen_id") != user["id"]:
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view updates for this incident."
+                )
+
+        # Try fetching from incident_updates; fallback to resolution_verifications if table missing
+        try:
+            res = (
+                db.table("incident_updates")
+                .select("*")
+                .eq("incident_id", incident_id)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            return {
+                "success": True,
+                "message": "Incident updates fetched successfully",
+                "data": res.data or [],
+            }
+        except Exception as tbl_err:
+            logger.warning(f"incident_updates table query failed, falling back to resolution_verifications: {tbl_err}")
+            rv_res = (
+                db.table("resolution_verifications")
+                .select("*")
+                .eq("incident_id", incident_id)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            data = [
+                {
+                    "id": r["id"],
+                    "incident_id": r["incident_id"],
+                    "status": r.get("verification_status"),
+                    "note": f"Resolution Verification (Confidence: {r.get('verification_score', 0)})",
+                    "before_image_url": r.get("before_image_url"),
+                    "after_image_url": r.get("after_image_url"),
+                    "created_at": r.get("created_at"),
+                }
+                for r in (rv_res.data or [])
+            ]
+            return {
+                "success": True,
+                "message": "Incident updates fetched successfully",
+                "data": data,
+            }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Failed to fetch incident updates")
         raise HTTPException(
@@ -374,12 +545,24 @@ def reprocess_incident_ai(
     db: Client = get_supabase()
 
     try:
-        # Fetch the incident
-        res = db.table("incidents").select("*").eq("id", incident_id).single().execute()
+        # Fetch the incident safely without .single()
+        res = db.table("incidents").select("*").eq("id", incident_id).execute()
         if not res.data:
-            raise HTTPException(status_code=404, detail="Incident not found")
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Incident not found")
 
-        incident = res.data
+        incident = res.data[0]
+
+        # Authorization check: citizens can only reprocess their own, workers their assigned
+        if user["role"] == "citizen" and incident.get("citizen_id") != user["id"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to reprocess this incident."
+            )
+        if user["role"] == "worker" and incident.get("assigned_to") != user["id"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to reprocess this incident."
+            )
 
         # Reset AI status
         db.table("incidents").update({"ai_processing_status": "processing"}).eq("id", incident_id).execute()
@@ -388,8 +571,8 @@ def reprocess_incident_ai(
         background_tasks.add_task(
             process_incident_ai_background,
             incident_id,
-            incident.get("description", ""),
-            None,
+            incident.get("description") or incident.get("title") or "",
+            incident.get("audio_url"),
             incident.get("image_url"),
             incident.get("location_lat"),
             incident.get("location_lng"),

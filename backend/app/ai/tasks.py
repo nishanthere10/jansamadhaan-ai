@@ -156,6 +156,15 @@ async def process_incident_ai_background(
             "ai_structured_data":  structured_data if structured_data else None,
         }
 
+        # Normalize severity to valid enum {'low', 'medium', 'high', 'critical'}
+        raw_sev = final_state.get("severity")
+        norm_sev = None
+        if raw_sev:
+            clean_sev = str(raw_sev).lower().replace(" risk", "").strip()
+            norm_sev = "critical" if clean_sev in ("emergency", "critical") else clean_sev
+            if norm_sev not in ("low", "medium", "high", "critical"):
+                norm_sev = "medium"
+
         # Also update the MAIN title and description columns with AI-enriched values
         # so the dashboard displays the AI-generated content instead of raw placeholders
         if final_state.get("generated_title"):
@@ -166,12 +175,12 @@ async def process_incident_ai_background(
         if final_state.get("category"):
             incident_updates["category"] = final_state["category"]
         # Update severity from AI scoring  
-        if final_state.get("severity"):
-            incident_updates["severity"] = final_state["severity"]
+        if norm_sev:
+            incident_updates["severity"] = norm_sev
 
-        # If it's flagged as spam, maybe we downgrade the priority or severity
+        # If it's flagged as spam, set low priority in schema
         if final_state.get("is_spam"):
-            incident_updates["ai_severity"] = "Spam/Fake"
+            incident_updates["severity"] = "low"
         
         # Remove None values to avoid overwriting existing data with nulls
         incident_updates = {k: v for k, v in incident_updates.items() if v is not None}

@@ -26,8 +26,15 @@ class ResolutionVerificationService:
         client = Groq(api_key=api_key)
         
         try:
-            # Helper to fetch and encode image
+            # Helper to fetch and encode image safely
+            from app.core.security import is_safe_image_url
             def fetch_image(url):
+                if not url:
+                    raise ValueError("Image URL is empty")
+                if url.startswith("data:image/"):
+                    return url
+                if not is_safe_image_url(url):
+                    raise ValueError(f"Invalid or unsafe image URL: {url}")
                 res = requests.get(url, timeout=10)
                 res.raise_for_status()
                 ctype = res.headers.get('content-type', 'image/jpeg')
@@ -37,8 +44,11 @@ class ResolutionVerificationService:
             before_b64 = fetch_image(before_url)
             after_b64 = fetch_image(after_url)
 
+            # Sanitize incident title to prevent prompt injection
+            safe_title = str(incident_title).replace("\n", " ").replace('"', '\\"').strip()[:100]
+
             prompt = (
-                f"You are an expert infrastructure auditing AI. You are reviewing a resolution report for: '{incident_title}'. "
+                f'You are an expert infrastructure auditing AI. You are reviewing a resolution report for incident: "{safe_title}". '
                 "You are provided with TWO images. The FIRST image is the 'Before' picture showing the initial problem. "
                 "The SECOND image is the 'After' picture showing the worker's claimed repair/resolution. "
                 "Carefully compare both images. "

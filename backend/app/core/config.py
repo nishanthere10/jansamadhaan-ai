@@ -1,21 +1,55 @@
-import os
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
+
 
 class Settings(BaseSettings):
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
-    
-    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
+    # Supabase
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_JWT_SECRET: str = ""
 
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    # Twilio
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_PHONE_NUMBER: str = ""
 
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
+    # Groq
+    GROQ_API_KEY: str = ""
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    # App
+    ENVIRONMENT: str = "production"
+
+    # ── Validators ─────────────────────────────────────────────────────────────
+    @field_validator("SUPABASE_URL", mode="before")
+    @classmethod
+    def clean_supabase_url(cls, v: str) -> str:
+        """Strip whitespace/newlines and ensure https:// prefix."""
+        v = str(v).strip()
+        if v and not v.startswith("https://"):
+            v = "https://" + v
+        return v
+
+    @field_validator(
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_JWT_SECRET",
+        "GROQ_API_KEY",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_PHONE_NUMBER",
+        "ENVIRONMENT",
+        mode="before",
+    )
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        return str(v).strip()
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
+
 
 settings = Settings()
