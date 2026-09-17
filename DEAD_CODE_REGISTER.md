@@ -120,24 +120,39 @@ genuinely imposing were re-declared by us in `frontend/index.css` under
 See `frontend/public/css/README.md` for the re-enable procedure and the
 "never bridge `--bs-*` into `--cr-*`" policy.
 
-## Backend (parked — backend cleanup not yet started)
+## Backend (audit COMPLETE — 2026-09-17)
 
-These were found by import-graph + symbol reachability analysis over
-`backend/app/**` with `backend/tests/**` as the usage corpus (knip cannot analyse
-Python — `backend/` has no `package.json`). **No backend files have been modified
-yet.** Each row is flagged; the disposition is finalised in the backend pass.
+Static pass finished: vulture (`app vulture_whitelist.py --min-confidence 60`) is
+clean, ruff (`ruff.toml`: E4/E7/E9/F/I/B/UP) is clean, pytest 49/49 green.
 
-| Path | Unused because | Disposition |
+### Dispositions (final)
+
+| Path | Finding | Disposition |
 |---|---|---|
-| `app/services/ai/placeholders.py` (`State`, `IncidentAgentOrchestrator`, `AgentNodes`) | file self-describes as a "Phase 1 placeholder"; the real pipeline is `app/ai/services/langgraph_pipeline.py` | candidate DELETE |
-| `app/whatsapp_ai/utils/whatsapp_logger.py` (`get_whatsapp_logger`) | superseded by `app/core/logging_config.py` (structured logging + request IDs). Would also double-log, since it sets `propagate = False` | candidate DELETE |
-| `app/whatsapp_ai/schemas/twilio_payload_schema.py` (`TwilioPayload`) | documents the Twilio form contract; the live parser is `whatsapp_message_parser.py` | KEEP (contract doc) |
-| `app/whatsapp_ai/services/whatsapp_confirmation_service.py` | outbound WhatsApp confirmation to the citizen; today the controller returns TwiML inline instead | KEEP — real unwired feature |
-| `app/whatsapp_ai/services/whatsapp_incident_mapper.py` + `schemas/structured_incident_schema.py` | superseded by `IncidentService.create_incident` | KEEP — canonical-payload mapping is reusable |
-| `app/ai/services/trust_scoring_service.py` | never invoked from the pipeline, the API, or status updates — despite being documented as a shipped Phase-4 feature | KEEP — pending decision to wire it in |
-| `app/ai/tasks.py` dead `nodes = [...]` list referencing a non-existent `pipeline.graph_instance` | leftover broken fallback scaffolding; the working fallback is directly below it | FIX (delete the dead list) |
-| `ai_response_models.py` → `TranscriptionResponse`, `VisionAnalysisResponse`; `schemas/auth.py` → `SignupResponseData`, `LoginResponseData`, `BaseResponse`; `schemas/incident.py` → `IncidentResponse`, `IncidentListResponse`, `IncidentUpdateResponse` | defined and unused; these are complete API response contracts, ready for `response_model=` | KEEP — API contracts |
-| `backend/test_groq_vision.py`, `tests/legacy_scripts/`, `tests/outputs/` | manual dev tools, already excluded from pytest via `pytest.ini` | KEEP — dev tools |
+| `app/services/ai/placeholders.py` | "Phase 1 placeholder" superseded by `langgraph_pipeline.py`; zero importers | **DELETED** (`git rm`) |
+| `app/whatsapp_ai/utils/whatsapp_logger.py` | superseded by `app/core/logging_config.py`; would double-log | **DELETED** (`git rm`) |
+| `app/ai/tasks.py` dead `nodes = [...]` list | referenced non-existent `pipeline.graph_instance` | **FIXED** (list removed) |
+| 24× `raise HTTPException(...)` without `from e` (B904) | in `api/{auth,incident,notifications,qr_projects}.py`, `services/incident_service.py`, `whatsapp_ai/services/whatsapp_user_service.py` | **FIXED** (all chained `from e`) |
+| `app/core/security.py`, `app/ai/services/vision_service.py`, `app/api/incident.py` | imports below module-level statements | **FIXED** (hoisted) |
+| 2× one-line `if: x` (E701) in `transcription_service.py`, `whatsapp_media_service.py` | style only | **FIXED** |
+| `tests/test_auth.py` B023 loop-variable capture | consumed synchronously (benign) | **FIXED** (default-arg binding) |
+| `app/main.py` E402, `tests/legacy_scripts/*` E402 | `load_dotenv()` / `sys.path` MUST precede app imports | **KEEP** — documented `per-file-ignores` in `ruff.toml` |
+| `app/whatsapp_ai/services/whatsapp_confirmation_service.py` | outbound citizen confirmations, unwired | **KEEP + REGISTER** — Phase-19 roadmap item |
+| `app/whatsapp_ai/services/whatsapp_incident_mapper.py` + `schemas/structured_incident_schema.py` | canonical-payload mapping | **KEEP + REGISTER** |
+| `app/whatsapp_ai/schemas/twilio_payload_schema.py` | documents the Twilio form contract | **KEEP** (contract doc) |
+| `app/ai/services/trust_scoring_service.py` | fully implemented, tested (`test_schema_gotchas.py`), never invoked by pipeline/API | **KEEP + REGISTER** — Phase-19 roadmap item |
+| `app/ai/services/duplicate_detection_service.py::GEO_RADIUS_METERS` | tuning constant, referenced in comments only | **KEEP + REGISTER** — review at duplicate-detection tuning |
+| `whatsapp_session_manager.py::get_session_data` | alternate accessor; live flow uses `get_session` | **KEEP + REGISTER** — review next backend pass |
+| `ai_response_models.py::TranscriptionResponse / VisionAnalysisResponse`; `schemas/auth.py` response models; `schemas/incident.py` response models | complete API contracts, ready for `response_model=` | **KEEP** — API contracts |
+| `app/core/database.py::reset_supabase_client` | used by `tests/test_database.py` | **KEEP** |
+| FastAPI handlers, Pydantic validators/fields, dataclass fields | static-analysis false positives | **KEEP** — whitelisted in `vulture_whitelist.py` with rationale |
+
+### Deliberately deferred
+
+- **`ruff format`**: 53/59 files would be reformatted. Pure style churn on working
+  modules — must land as its own dedicated commit, never mixed with logic edits.
+- **Whitelist review date: 2026-12-16** (3 months). Items above marked
+  KEEP+REGISTER must either be wired in or deleted at that point.
 
 > **Do not "fix" the unused-function warnings in `app/api/*.py` or `app/main.py`.**
 > Every function flagged there (`health_check`, `list_incidents`, `upload_image`,
@@ -149,3 +164,4 @@ yet.** Each row is flagged; the disposition is finalised in the backend pass.
 | Date | Change |
 |---|---|
 | 2026-09-17 | Register created. UX4G `ux4g.css` unlinked; continuity tokens added and verified against the production build. 3 dead frontend files removed. Env-var misreads and `.env.example` fixed. `tsconfig.tsbuildinfo` gitignored; `package.json` + lock updated (both still untracked — pending baseline commit). knip configured (`frontend/knip.json`) with `npm run knip` / `knip:ci`; knip added to devDependencies (lockfile updated, 22 packages). Reduced-motion and print styles added. |
+| 2026-09-17 | Backend dead-code audit completed: `placeholders.py` + `whatsapp_logger.py` deleted; `tasks.py` dead nodes list removed; 24× B904 exception chains fixed; E402/E701/B023 resolved (2 documented per-file-ignores). `ruff.toml` + `vulture_whitelist.py` added; ruff/vulture pinned in `requirements-dev.txt`. pytest 49/49 green throughout. `ruff format` deferred (see above). |
