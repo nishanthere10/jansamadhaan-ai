@@ -2,9 +2,10 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { 
   MapPin, Map, Activity, Camera, RotateCcw, AlertTriangle, 
-  CheckCircle2, LoadingSpinner, Sparkles, Zap, Layers, 
-  ShieldCheck, Link2, Clock, UserCheck
+  CheckCircle2, Sparkles, Zap, Layers, 
+  ShieldCheck, Link2, Clock
 } from 'lucide-react';
+import { LoadingSpinner } from '../../../components/shared/LoadingSpinner';
 import type { Incident, IncidentUpdate } from '../../../types';
 
 export interface ExpandedAiPanelProps {

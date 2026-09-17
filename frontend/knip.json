@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["index.html"],
+  "project": ["**/*.{ts,tsx}", "!dist/**"],
+  "ignore": [
+    "lib/client.ts",
+    "lib/server.ts",
+    "lib/supabase/client.ts"
+  ],
+  "ignoreDependencies": ["@supabase/ssr", "@supabase/supabase-js"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {
+    "components/ui/card.tsx": ["exports"],
+    "components/ui/dialog.tsx": ["exports"],
+    "types/index.ts": ["types"]
+  }
+}

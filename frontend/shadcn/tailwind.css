@@ -1,0 +1,6 @@
+/* Shadcn Tailwind v4 integration stub */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+}

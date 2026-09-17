@@ -54,7 +54,7 @@ export default function AuthorityDashboard() {
           totalIncidents={state.incidents.length}
           filteredCount={state.filteredIncidents.length}
           isAllSelected={state.selectedIds.size > 0 && state.selectedIds.size === state.filteredIncidents.length}
-          onToggleSelectAll={(e) => actions.toggleSelectAll(state.selectedIds.size === state.filteredIncidents.length)}
+          onToggleSelectAll={() => actions.toggleSelectAll(state.selectedIds.size === state.filteredIncidents.length)}
           onResetFilters={actions.resetFilters}
         >
           {state.filteredIncidents.map((inc) => (

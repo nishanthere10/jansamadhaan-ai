@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { motion, useInView, AnimatePresence } from 'framer-motion';
+import { motion, useInView, AnimatePresence, type Variants } from 'framer-motion';
 import {
   ShieldCheck, Brain, Users, Mic, Camera, QrCode,
   Globe, BarChart3, ArrowRight, CheckCircle, Zap,
@@ -10,24 +10,29 @@ import {
 import { useTranslation } from '../../lib/useTranslation';
 
 // ─── Animation variants ──────────────────────────────────
-const fadeUp = {
+const EASE_BEZIER: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: (delay = 0) => ({
-    opacity: 1, y: 0,
-    transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1], delay },
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.55, ease: EASE_BEZIER, delay },
   }),
 };
 
-const stagger = {
+const stagger: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.1, delayChildren: 0.1 } },
 };
 
-const cardVariant = {
+const cardVariant: Variants = {
   hidden: { opacity: 0, y: 20, scale: 0.97 },
   visible: {
-    opacity: 1, y: 0, scale: 1,
-    transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] },
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.45, ease: EASE_BEZIER },
   },
 };
 

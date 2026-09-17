@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { fetchWithAuth } from '../../lib/api';
 import { QrCode, Plus, X, AlertCircle, Loader2 } from 'lucide-react';
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner';
@@ -13,12 +13,12 @@ const INITIAL_FORM: QrProjectFormData = {
   budget: '',
 };
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
 };
 
-const cardVariants = {
+const cardVariants: Variants = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
 };

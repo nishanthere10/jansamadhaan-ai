@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../lib/api';
-import { supabase } from '../../lib/supabase/client';
 import { Camera, MapPin, Loader2, CheckCircle2, AlertCircle, X, Mic, Sparkles, Send } from 'lucide-react';
 
 import { useTranslation } from '../../lib/useTranslation';
@@ -104,27 +103,20 @@ export default function ReportIncident() {
     setError(null);
 
     try {
-      // Generate unique filename
-      const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const filePath = `incidents/${fileName}`;
+      const formData = new FormData();
+      formData.append('file', file);
 
-      // Upload to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('grievance_images')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      const res = await fetchWithAuth('/api/v1/incidents/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('grievance_images')
-        .getPublicUrl(filePath);
-
-      setImageUrl(urlData.publicUrl);
+      const json = await res.json();
+      if (res.ok && json.success && json.data?.image_url) {
+        setImageUrl(json.data.image_url);
+      } else {
+        throw new Error(json.detail || json.message || 'Image upload failed.');
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Image upload failed.';
       setError(message);
@@ -148,7 +140,7 @@ export default function ReportIncident() {
         body: JSON.stringify({ text: description }),
       });
       
-      let json: Record<string, unknown> = {};
+      let json: Record<string, any> = {};
       const text = await res.text();
       if (text) {
         try {
@@ -200,7 +192,7 @@ export default function ReportIncident() {
         body: JSON.stringify(payload),
       });
 
-      let json: Record<string, unknown> = {};
+      let json: Record<string, any> = {};
       const text = await res.text();
       if (text) {
         try {

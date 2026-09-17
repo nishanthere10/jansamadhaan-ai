@@ -56,10 +56,12 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending:     '#D97706',
-  in_progress: '#0055A4',
-  resolved:    '#1A7A3E',
-  rejected:    '#B91C1C',
+  pending:       '#D97706',
+  assigned:      '#4F46E5',
+  'in-progress': '#0055A4',
+  in_progress:   '#0055A4',
+  resolved:      '#1A7A3E',
+  rejected:      '#B91C1C',
 };
 
 const CAT_COLORS = ['#0055A4','#F47920','#1A7A3E','#8b5cf6','#0ea5e9','#ec4899','#14b8a6'];
@@ -78,7 +80,7 @@ export default function Analytics() {
 
   const total       = incidents.length;
   const pending     = incidents.filter(i => i.status === 'pending').length;
-  const inProgress  = incidents.filter(i => i.status === 'in_progress').length;
+  const inProgress  = incidents.filter(i => i.status === 'in-progress' || i.status === 'in_progress').length;
   const resolved    = incidents.filter(i => i.status === 'resolved').length;
   const aiProcessed = incidents.filter(i => i.ai_processing_status === 'completed').length;
   const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jan Samadhan — AI-Powered Public Grievance Platform</title>
+    
+    <!--
+      UX4G Design System CSS is intentionally NOT linked here.
+
+      UX4G v2.0.8 (MIT, (c) NeGD/MeitY) is a Bootstrap 5 fork vendored in
+      /public/css/. It is unlayered CSS carrying 1,689 `!important` rules, so
+      loading it globally silently outranked every Tailwind cascade layer and
+      imposed Bootstrap spacing/shadows plus a purple (#613AF5) theme on top of
+      our own design system. Tailwind + the `--cr-*` tokens in index.css are the
+      source of truth now.
+
+      The values we intentionally inherit from it are declared by us in
+      index.css ("UX4G CONTINUITY TOKENS").
+
+      See /public/css/README.md and /DEAD_CODE_REGISTER.md before re-enabling.
+    -->
+
+
+    <!-- Google Fonts: DM Sans, IBM Plex Sans, Merriweather -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Merriweather:ital,wght@0,300..900;1,300..900&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

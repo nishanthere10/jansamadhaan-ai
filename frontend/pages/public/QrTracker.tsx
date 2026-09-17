@@ -30,20 +30,19 @@ export default function QrTracker() {
       return;
     }
 
-    // Public unauthenticated endpoint — fetch directly
-    fetch(`/api/v1/qr-projects`)
+    // Public unauthenticated endpoint — fetch single project directly
+    fetch(`/api/v1/qr-projects/${id}`)
       .then(async (res) => {
+        if (res.status === 404) {
+          setNotFound(true);
+          return;
+        }
         if (!res.ok) {
           throw new Error(`Server error: ${res.status}`);
         }
-        const json: ApiResponse<QrProject[]> = await res.json();
+        const json = await res.json();
         if (json.success && json.data) {
-          const target = json.data.find((p) => p.id === id);
-          if (target) {
-            setProject(target);
-          } else {
-            setNotFound(true);
-          }
+          setProject(json.data);
         } else {
           setError(json.detail || json.message || 'Failed to load project data.');
         }

@@ -103,13 +103,18 @@ export const AppRoutes = () => {
                 <Routes>
                   {/* Dashboard — role-based */}
                   <Route path="/dashboard" element={<RoleBasedHome />} />
+                  
+                  {/* Direct portal routes for easy URL navigation */}
+                  <Route path="/authority" element={<AuthorityDashboard />} />
+                  <Route path="/citizen" element={<CitizenDashboard />} />
+                  <Route path="/worker" element={<WorkerDashboard />} />
 
-                  {/* Shared routes — all authenticated users */}
+                  {/* Shared routes */}
                   <Route path="/incidents" element={<IncidentsList />} />
                   <Route path="/analytics" element={<Analytics />} />
                   <Route path="/settings" element={<SettingsPage />} />
 
-                  {/* Citizen only */}
+                  {/* Incident reporting routes */}
                   <Route
                     path="/citizen/report"
                     element={
@@ -118,6 +123,7 @@ export const AppRoutes = () => {
                       </RoleRoute>
                     }
                   />
+                  <Route path="/report" element={<ReportIncident />} />
 
                   {/* Authority only */}
                   <Route

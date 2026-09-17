@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { fetchWithAuth } from '../../lib/api';
 import { Search, Filter, MapPin, Clock, AlertTriangle } from 'lucide-react';
+import { IncidentDetailModal } from '../../components/shared/IncidentDetailModal';
 
 interface Incident {
   id: string;
@@ -18,6 +19,8 @@ interface Incident {
 
 const statusColors: Record<string, string> = {
   pending: '#f59e0b',
+  assigned: 'var(--cr-blue-mid)',
+  'in-progress': 'var(--cr-orange)',
   in_progress: 'var(--cr-orange)',
   resolved: 'var(--cr-green)',
   closed: '#6b7280',
@@ -36,6 +39,7 @@ export default function IncidentsList() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
   useEffect(() => {
     fetchWithAuth('/api/v1/incidents')
@@ -54,7 +58,9 @@ export default function IncidentsList() {
       i.title?.toLowerCase().includes(search.toLowerCase()) ||
       i.tracking_id?.toLowerCase().includes(search.toLowerCase()) ||
       i.description?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || i.status === statusFilter;
+    const normInc = (i.status || '').replace('_', '-');
+    const normFilter = statusFilter.replace('_', '-');
+    const matchStatus = statusFilter === 'all' || normInc === normFilter;
     return matchSearch && matchStatus;
   });
 
@@ -94,7 +100,8 @@ export default function IncidentsList() {
           >
             <option value="all">All Statuses</option>
             <option value="pending">Pending</option>
-            <option value="in_progress">In Progress</option>
+            <option value="assigned">Assigned</option>
+            <option value="in-progress">In Progress</option>
             <option value="resolved">Resolved</option>
             <option value="closed">Closed</option>
           </select>
@@ -119,7 +126,8 @@ export default function IncidentsList() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="cr-card p-4 hover:shadow-md transition-shadow"
+              onClick={() => setSelectedIncident(incident)}
+              className="cr-card p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-[var(--cr-primary)]/50"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
@@ -134,7 +142,7 @@ export default function IncidentsList() {
                         color: statusColors[incident.status] || '#888',
                       }}
                     >
-                      {incident.status?.replace('_', ' ')}
+                      {incident.status?.replace(/[-_]/g, ' ')}
                     </span>
                     {incident.ai_processing_status === 'completed' && (
                       <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
@@ -179,6 +187,13 @@ export default function IncidentsList() {
           ))}
         </div>
       )}
+
+      {/* Incident Detail Modal */}
+      <IncidentDetailModal
+        incidentId={selectedIncident?.id || null}
+        title={selectedIncident?.title}
+        onClose={() => setSelectedIncident(null)}
+      />
     </div>
   );
 }

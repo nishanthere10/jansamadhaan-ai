@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { AuthNavbar } from '../../components/layout/AuthNavbar';
 
@@ -9,7 +9,9 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Button } from '../../components/ui/button';
 
-const containerVariants = {
+const EASE_BEZIER: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
+
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -17,9 +19,9 @@ const containerVariants = {
   },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { y: 20, opacity: 0 },
-  visible: { y: 0, opacity: 1, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } },
+  visible: { y: 0, opacity: 1, transition: { duration: 0.4, ease: EASE_BEZIER } },
 };
 
 export default function Signup() {

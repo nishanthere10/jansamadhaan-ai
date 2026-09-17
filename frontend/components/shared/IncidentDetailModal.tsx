@@ -29,16 +29,15 @@ export function IncidentDetailModal({ incidentId, onClose, title }: DetailModalP
       try {
         const [updatesRes, incidentRes] = await Promise.all([
           fetchWithAuth(`/api/v1/incidents/${incidentId}/updates`),
-          fetchWithAuth(`/api/v1/incidents`), // Need to find the singular incident. For scale we'd add a GET /id route.
+          fetchWithAuth(`/api/v1/incidents/${incidentId}`),
         ]);
         const updatesJson = await updatesRes.json();
-        const incidentsJson = await incidentRes.json();
+        const incidentJson = await incidentRes.json();
         
         if (isMounted) {
           if (updatesJson.success) setUpdates(updatesJson.data);
-          if (incidentsJson.success) {
-            const inc = incidentsJson.data.find((i: Incident) => i.id === incidentId);
-            setIncident(inc || null);
+          if (incidentJson.success) {
+            setIncident(incidentJson.data);
           }
         }
       } catch (err) {
@@ -136,18 +135,18 @@ export function IncidentDetailModal({ incidentId, onClose, title }: DetailModalP
                 ))}
               </div>
             )
-          ) : activeTab === 'ai' && incident?.ai_structured_data ? (
+          ) : activeTab === 'ai' && (incident?.ai_structured_data || incident?.ai_category || incident?.ai_vision_analysis || incident?.ai_severity) ? (
               <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Automated Categorization</h4>
                   <div className="flex gap-2">
-                    <Badge variant="secondary">{incident.ai_category || 'Uncategorized'}</Badge>
-                    <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">{incident.ai_department || 'Unknown Dept'}</Badge>
-                    <Badge variant={incident.severity === 'high' || incident.severity === 'critical' ? 'destructive' : 'default'}>{incident.severity}</Badge>
+                    <Badge variant="secondary">{incident?.ai_category || incident?.category || 'Uncategorized'}</Badge>
+                    <Badge variant="outline" className="border-indigo-200 text-indigo-700 bg-indigo-50">{incident?.ai_department || 'General'}</Badge>
+                    <Badge variant={incident?.severity === 'high' || incident?.severity === 'critical' ? 'destructive' : 'default'}>{incident?.severity || 'low'}</Badge>
                   </div>
                 </div>
                 
-                {incident.ai_structured_data.hazard_description && (
+                {incident?.ai_structured_data?.hazard_description && (
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 mt-4">Risk Assessment</h4>
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-300 flex gap-2 items-center">

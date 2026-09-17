@@ -113,7 +113,10 @@ export function useDashboardState() {
   const acceptAiTriage = async (incident: Incident) => {
     const payload: Record<string, string> = {};
     if (incident.ai_category) payload.category = incident.ai_category;
-    if (incident.ai_severity) payload.severity = incident.ai_severity.toLowerCase();
+    if (incident.ai_severity) {
+      const cleanSev = incident.ai_severity.toLowerCase().replace(' risk', '').trim();
+      payload.severity = (cleanSev === 'emergency' || cleanSev === 'critical') ? 'critical' : cleanSev;
+    }
     if (incident.ai_department) payload.department = incident.ai_department;
 
     if (Object.keys(payload).length === 0) return;
@@ -250,7 +253,11 @@ export function useDashboardState() {
         if (filterRisk === 'medium' && !incRisk.includes('medium')) return false;
         if (filterRisk === 'low' && !incRisk.includes('low')) return false;
       }
-      if (filterStatus !== 'all' && inc.status !== filterStatus) return false;
+      if (filterStatus !== 'all') {
+        const normInc = (inc.status || '').replace('_', '-');
+        const normFilter = filterStatus.replace('_', '-');
+        if (normInc !== normFilter) return false;
+      }
       if (filterDept !== 'all') {
         const dept = (inc.ai_department || 'unassigned').toLowerCase();
         if (filterDept === 'unassigned' && inc.ai_department) return false;
@@ -275,8 +282,12 @@ export function useDashboardState() {
   const counts = {
     total: filtersActive ? `${filteredIncidents.length} of ${incidents.length}` : `${incidents.length}`,
     pending: filteredIncidents.filter((i) => i.status === 'pending').length,
-    inProgress: filteredIncidents.filter((i) => i.status === 'in-progress').length,
-    critical: filteredIncidents.filter((i) => i.severity === 'critical' || i.ai_severity === 'Critical').length,
+    inProgress: filteredIncidents.filter((i) => i.status === 'in-progress' || (i.status as string) === 'in_progress').length,
+    critical: filteredIncidents.filter((i) => {
+      const s = (i.severity || '').toLowerCase();
+      const ais = (i.ai_severity || '').toLowerCase();
+      return s === 'critical' || s === 'emergency' || ais.includes('critical') || ais.includes('emergency');
+    }).length,
     clustered: filteredIncidents.filter((i) => (i.duplicate_count || 0) > 0).length,
   };
 
