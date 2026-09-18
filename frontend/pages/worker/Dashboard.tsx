@@ -50,6 +50,7 @@ export default function WorkerDashboard() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<string | null>(null);
+  const [verificationNotice, setVerificationNotice] = useState<{ status: string; message: string } | null>(null);
   const [resolution, setResolution] = useState<ResolutionState>(DEFAULT_RESOLUTION);
   const { t } = useTranslation();
 
@@ -105,7 +106,8 @@ export default function WorkerDashboard() {
     formData.append('file', file);
 
     try {
-      const res = await fetchWithAuth('/api/v1/incidents/upload', {
+      if (!activeTask) return;
+      const res = await fetchWithAuth(`/api/v1/incidents/upload?incident_id=${encodeURIComponent(activeTask)}`, {
         method: 'POST',
         body: formData,
       });
@@ -142,8 +144,9 @@ export default function WorkerDashboard() {
           resolution_image_url: resolution.proofUrl,
         }),
       });
-      const json: ApiResponse<unknown> = await res.json();
-      if (res.ok && json.success) {
+      const json: ApiResponse<{ verification_status: 'verified' | 'rejected' | 'error' }> = await res.json();
+      if (res.ok && json.success && json.data) {
+        setVerificationNotice({ status: json.data.verification_status, message: json.message });
         closeTask();
         load(); // Refresh the queue
       } else {
@@ -182,6 +185,14 @@ export default function WorkerDashboard() {
         </p>
       </motion.div>
 
+      {verificationNotice && (
+        <div role="status" className="mb-6 rounded-lg border p-4">
+          <strong>{verificationNotice.status === 'verified' ? 'Resolution verified' :
+            verificationNotice.status === 'rejected' ? 'Proof rejected — rework required' :
+              'Verification pending — manual review'}</strong>
+          <p>{verificationNotice.message}</p>
+        </div>
+      )}
       {/* Fetch error */}
       <AnimatePresence>
         {fetchError && !loading && (

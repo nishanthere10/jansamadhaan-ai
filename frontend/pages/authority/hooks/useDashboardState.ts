@@ -271,9 +271,6 @@ export function useDashboardState() {
       const dupA = a.duplicate_count || 0;
       const dupB = b.duplicate_count || 0;
       if (dupA !== dupB) return dupB - dupA;
-      const scoreA = a.priority_score || 0;
-      const scoreB = b.priority_score || 0;
-      if (scoreA !== scoreB) return scoreB - scoreA;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 

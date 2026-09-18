@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../../store/useAuthStore';
+import { useAuthStore, DEV_USERS, DEV_TOKENS } from '../../store/useAuthStore';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { AuthNavbar } from '../../components/layout/AuthNavbar';
@@ -32,6 +32,10 @@ export default function Login() {
   const setUser = useAuthStore((state) => state.setUser);
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard';
 
+  // Dev-only instant-login panel. Production builds (import.meta.env.DEV === false)
+  // never render it and never mint dev tokens.
+  const allowDevBypass = import.meta.env.DEV === true && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -58,30 +62,18 @@ export default function Login() {
         navigate(from, { replace: true });
         return;
       }
+      // Backend rejected the credentials: surface the reason. No silent bypass.
+      setError(result.detail || result.message || 'Invalid email or password.');
     } catch {
-      // Local dev bypass fallback
+      setError('Cannot reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-
-    // --- LOCAL DEV BYPASS FALLBACK ---
-    // If backend rejects credentials or email is unconfirmed, log in directly for dev
-    const role = (email.includes('worker') ? 'worker' : (email.includes('citizen') ? 'citizen' : 'authority')) as any;
-    setUser({
-      id: '385ca672-ef17-4ff3-a2f2-ae2077b4feb5',
-      email: email || 'officer@gov.in',
-      full_name: email ? email.split('@')[0] : 'Nishant Shetty',
-      role: role,
-    }, 'dev-bypass-token');
-    navigate(from, { replace: true });
-    setLoading(false);
   };
 
   const handleDevDirect = (role: 'authority' | 'citizen' | 'worker') => {
-    setUser({
-      id: role === 'authority' ? '385ca672-ef17-4ff3-a2f2-ae2077b4feb5' : (role === 'citizen' ? '0cc48132-66d1-4231-af22-c142192006e5' : 'bf1ffc54-5145-4f24-bba8-ff5ebf8936f3'),
-      email: role === 'authority' ? 'nishantshetty321@gmail.com' : (role === 'citizen' ? 'ganeshshetty621976@gmail.com' : 'meinhusinger12@gmail.com'),
-      full_name: role === 'authority' ? 'Nishant Shetty (Authority)' : (role === 'citizen' ? 'Ganesh Shetty (Citizen)' : 'Ravi Kumar (Worker)'),
-      role: role,
-    }, 'dev-bypass-token');
+    if (!allowDevBypass) return;
+    setUser(DEV_USERS[role], DEV_TOKENS[role]);
     navigate(role === 'authority' ? '/authority' : (role === 'citizen' ? '/citizen' : '/worker'));
   };
 
@@ -123,7 +115,8 @@ export default function Login() {
             </CardHeader>
 
             <CardContent className="px-8 pb-8">
-              {/* Dev Quick-Access Buttons */}
+              {/* Dev-only instant-login panel — never rendered in production builds */}
+              {allowDevBypass && (
               <div className="mb-6 p-3.5 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/70 dark:border-blue-800/60 text-center">
                 <p className="text-[11px] font-semibold text-blue-800 dark:text-blue-300 uppercase tracking-wider mb-2.5">
                   ⚡ Local Dev Bypass • Instant Access
@@ -152,6 +145,7 @@ export default function Login() {
                   </button>
                 </div>
               </div>
+              )}
 
               <AnimatePresence mode="sync">
                 {error && (

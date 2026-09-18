@@ -61,7 +61,6 @@ export interface Incident {
   description: string;
   category: string;
   severity: IncidentSeverity;
-  priority_score?: number;
   department?: string | null;
   status: IncidentStatus;
   location_lat?: number | null;

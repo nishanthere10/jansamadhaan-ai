@@ -1,6 +1,6 @@
 import React from 'react';
-// import { Navigate, useLocation } from 'react-router-dom';
-// import { useAuthStore } from '../../store/useAuthStore';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuthStore } from '../../store/useAuthStore';
 import type { UserRole } from '../../types';
 
 interface ProtectedRouteProps {
@@ -9,21 +9,20 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
-  // const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
-  // const user = useAuthStore((state) => state.user);
-  // const location = useLocation();
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
+  const location = useLocation();
 
-  // --- LOCAL DEV ONLY: AUTH CHECKS COMMENTED OUT ---
-  // // Not authenticated — redirect to login, preserving intended destination
-  // if (!isLoggedIn || !user) {
-  //   return <Navigate to="/login" state={{ from: location }} replace />;
-  // }
+  // Not authenticated — redirect to login, preserving intended destination
+  if (!isLoggedIn || !user || !token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
 
-  // // Authenticated but wrong role — redirect to unauthorized
-  // if (allowedRoles && !allowedRoles.includes(user.role)) {
-  //   return <Navigate to="/unauthorized" replace />;
-  // }
-  // ------------------------------------------------
+  // Authenticated but wrong role — redirect to unauthorized
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
 
   return <>{children}</>;
 };

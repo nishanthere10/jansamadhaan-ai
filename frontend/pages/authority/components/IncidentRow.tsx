@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, AlertTriangle, CheckCircle2, Activity, Zap, UserCheck, Clock } from 'lucide-react';
+import { ChevronDown, AlertTriangle, CheckCircle2, Zap, UserCheck, Clock } from 'lucide-react';
 import { StatusBadge } from '../../../components/shared/StatusBadge';
 import { SeverityBadge } from '../../../components/shared/SeverityBadge';
 import type { Incident } from '../../../types';
@@ -83,11 +83,6 @@ export const IncidentRow: React.FC<IncidentRowProps> = ({
         <td className="p-4">
           <div className="flex flex-col gap-1.5">
             <SeverityBadge severity={inc.severity} />
-            {(inc.priority_score !== undefined && inc.priority_score !== null) && (
-              <div className="text-[10px] text-[var(--cr-text-muted)] font-medium flex items-center gap-1">
-                <Activity size={10} /> Priority Score: {Math.round(inc.priority_score * 100)}/100
-              </div>
-            )}
             {inc.ai_severity && inc.ai_severity.toLowerCase() !== inc.severity.toLowerCase() && (
               <div className="text-[10px] text-[var(--cr-amber)] font-bold">AI Suggests: {inc.ai_severity}</div>
             )}
