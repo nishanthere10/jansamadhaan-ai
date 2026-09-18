@@ -4,12 +4,25 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 
+from app.core.config import settings
 from app.core.database import get_supabase
-from app.core.security import get_current_user
+from app.core.security import get_current_user, is_dev_bypass_enabled, issue_dev_session
 from app.schemas.auth import AadharLoginRequest, LoginRequest, SignupRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Demo bench for local walkthroughs. Selecting one of these ids makes the status
+# endpoint substitute a real worker, so exposing them outside development would
+# let an authority assign an incident to a different worker than the one chosen.
+MOCK_WORKERS = [
+    {"id": "mock-w1", "full_name": "Rajesh Kumar (Heavy Machinery)", "department": "Public Works (PWD)"},
+    {"id": "mock-w2", "full_name": "Sunita Sharma (Drainage Expert)", "department": "Water Supply & Sanitation"},
+    {"id": "mock-w3", "full_name": "Vikram Singh (Power Grid)", "department": "Electricity Board"},
+    {"id": "mock-w4", "full_name": "Anita Desai (Waste Management)", "department": "Municipal Corporation"},
+    {"id": "mock-w5", "full_name": "Ravi Patel (Tree Cutting Unit)", "department": "Parks & Recreation"},
+    {"id": "mock-w6", "full_name": "Kiran Rao (Traffic Signals)", "department": "Traffic Police"},
+]
 
 @router.post("/signup")
 async def signup(req: SignupRequest):
@@ -73,6 +86,15 @@ async def signup(req: SignupRequest):
 
 @router.post("/aadhar-login")
 async def aadhar_login(req: AadharLoginRequest):
+    # ── Hardening: the mock Aadhar flow mints a non-JWT token that can never
+    # pass real verification. It is a development/demo convenience only.
+    # Production (or any env without the explicit dev bypass) must refuse it
+    # instead of creating a mock identity.
+    if not is_dev_bypass_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Aadhar demo login is disabled. Use email/password authentication.",
+        )
     db: Client = get_supabase()
     aadhar = req.aadhar_number.replace(" ", "")
     if len(aadhar) != 12 or not aadhar.isdigit():
@@ -119,8 +141,12 @@ async def aadhar_login(req: AadharLoginRequest):
         else:
             profile_data = existing.data[0]
 
-        # Generate a mock access token (not a real JWT — the frontend only stores it)
-        mock_token = f"mock_aadhar_token_{mock_user_id}"
+        mock_token = issue_dev_session({
+            "id": mock_user_id,
+            "full_name": profile_data.get("full_name", mock_full_name),
+            "email": profile_data.get("email", f"citizen-{aadhar[:4]}@jansamadhan.demo"),
+            "role": "citizen",
+        })
 
         return {
             "success": True,
@@ -165,7 +191,7 @@ async def login(req: LoginRequest):
                 "id": auth_res.user.id,
                 "full_name": req.email.split("@")[0].capitalize(),
                 "email": req.email,
-                "role": "authority" if ("gov" in req.email or "admin" in req.email) else "citizen"
+                "role": "citizen"
             }
             try:
                 db.table("users").insert(profile_data).execute()
@@ -230,20 +256,18 @@ def get_workers(user: dict = Depends(get_current_user)):
     db: Client = get_supabase()
     workers = db.table("users").select("id, full_name, department").eq("role", "worker").execute()
     
-    worker_list = [{"id": w["id"], "full_name": w["full_name"], "department": w.get("department")} for w in workers.data]
-    
-    # Add high-quality mock data for demonstration
-    mock_workers = [
-        {"id": "mock-w1", "full_name": "Rajesh Kumar (Heavy Machinery)", "department": "Public Works (PWD)"},
-        {"id": "mock-w2", "full_name": "Sunita Sharma (Drainage Expert)", "department": "Water Supply & Sanitation"},
-        {"id": "mock-w3", "full_name": "Vikram Singh (Power Grid)", "department": "Electricity Board"},
-        {"id": "mock-w4", "full_name": "Anita Desai (Waste Management)", "department": "Municipal Corporation"},
-        {"id": "mock-w5", "full_name": "Ravi Patel (Tree Cutting Unit)", "department": "Parks & Recreation"},
-        {"id": "mock-w6", "full_name": "Kiran Rao (Traffic Signals)", "department": "Traffic Police"}
+    # The demo bench is development-only. Production authorities must only ever
+    # see registered worker accounts, because selecting a mock id makes the status
+    # endpoint substitute a different, real worker.
+    worker_list = [
+        {"id": w["id"], "full_name": w["full_name"], "department": w.get("department")}
+        for w in (workers.data or [])
     ]
-    
+    if not settings.is_production:
+        worker_list += MOCK_WORKERS
+
     return {
         "success": True,
-        "data": worker_list + mock_workers
+        "data": worker_list
     }
 

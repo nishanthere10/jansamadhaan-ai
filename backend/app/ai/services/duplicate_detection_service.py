@@ -107,6 +107,19 @@ class DuplicateDetectionService:
                 "cluster_match_score": 0.0,
             }
 
+        db = get_supabase()
+        existing = db.table("incidents").select(
+            "cluster_id, is_primary_incident, duplicate_count, ai_structured_data"
+        ).eq("id", incident_id).execute()
+        if existing.data and existing.data[0].get("cluster_id"):
+            row = existing.data[0]
+            return {
+                "cluster_id": row["cluster_id"],
+                "is_primary_incident": row["is_primary_incident"],
+                "duplicate_count": row.get("duplicate_count") or 0,
+                "cluster_match_score": (row.get("ai_structured_data") or {}).get("cluster_match_score", 0.0),
+            }
+
         # If no category or location, we can't do meaningful matching → standalone
         if not category or lat is None or lng is None:
             logger.info(f"[DuplicateDetection] Insufficient data for matching (cat={category}, lat={lat}, lng={lng}). Creating standalone cluster.")
@@ -142,8 +155,16 @@ class DuplicateDetectionService:
         # 3. Decide: merge or standalone
         if best_match and best_score >= MATCH_THRESHOLD:
             cluster_id = best_match.get("cluster_id") or str(uuid.uuid4())
-            primary_id = best_match.get("id")
-            new_dup_count = (best_match.get("duplicate_count") or 0) + 1
+            primary = best_match
+            if best_match.get("cluster_id") and not best_match.get("is_primary_incident"):
+                result = db.table("incidents").select("id, duplicate_count").eq(
+                    "cluster_id", cluster_id
+                ).eq("is_primary_incident", True).execute()
+                if len(result.data or []) != 1:
+                    raise ValueError("Cluster must have exactly one primary incident")
+                primary = result.data[0]
+            primary_id = primary["id"]
+            new_dup_count = (primary.get("duplicate_count") or 0) + 1
 
             logger.info(
                 f"[DuplicateDetection] MATCH FOUND — score={best_score:.2f}, "
@@ -155,6 +176,7 @@ class DuplicateDetectionService:
                 cluster_id=cluster_id,
                 primary_id=primary_id,
                 new_dup_count=new_dup_count,
+                best_score=best_score,
             )
             return {
                 "cluster_id": cluster_id,
@@ -276,6 +298,7 @@ class DuplicateDetectionService:
             }).eq("id", incident_id).execute()
         except Exception as e:
             logger.warning(f"[DuplicateDetection] Failed to save standalone cluster for {incident_id}: {e}")
+            raise
 
     @classmethod
     async def _attach_to_cluster(
@@ -284,6 +307,7 @@ class DuplicateDetectionService:
         cluster_id: str,
         primary_id: str,
         new_dup_count: int,
+        best_score: float = 0.0,
     ) -> None:
         """Attach a new incident to an existing cluster and escalate severity."""
         db = get_supabase()
@@ -329,11 +353,12 @@ class DuplicateDetectionService:
                 db.table("duplicate_complaints").insert({
                     "incident_id": primary_id,
                     "duplicate_incident_id": incident_id,
-                    "similarity_score": 0.85,
+                    "similarity_score": best_score,
                     "detection_reason": f"AI cluster match attached to primary incident {primary_id}",
                 }).execute()
             except Exception as dup_table_err:
                 logger.warning(f"[DuplicateDetection] Could not insert into duplicate_complaints: {dup_table_err}")
+                raise
 
             logger.info(
                 f"[DuplicateDetection] Attached {incident_id} to cluster {cluster_id} "
@@ -341,3 +366,4 @@ class DuplicateDetectionService:
             )
         except Exception as e:
             logger.error(f"[DuplicateDetection] Failed to attach to cluster: {e}")
+            raise

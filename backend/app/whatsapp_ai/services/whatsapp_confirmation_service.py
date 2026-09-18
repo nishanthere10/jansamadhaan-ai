@@ -1,26 +1,29 @@
 import logging
-import os
 
 from twilio.rest import Client
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # e.g., "whatsapp:+14155238886"
 
 class WhatsAppConfirmationService:
     @staticmethod
-    def send_confirmation(to_phone: str, tracking_id: str):
+    def send_confirmation(to_phone: str, tracking_id: str) -> None:
+        """Send the one confirmation that follows a successful complaint.
+
+        Credentials are read from the central settings at call time. Never
+        raises: a delivery failure must not fail the webhook that already
+        created the incident.
         """
-        Sends a WhatsApp confirmation to the citizen using the Twilio client.
-        """
-        if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+        account_sid = settings.TWILIO_ACCOUNT_SID
+        auth_token = settings.TWILIO_AUTH_TOKEN
+        if not account_sid or not auth_token:
             logger.warning("Twilio credentials not set, skipping confirmation message.")
             return
             
         try:
-            client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+            client = Client(account_sid, auth_token)
             
             # Format phone
             formatted_to = f"whatsapp:{to_phone}" if not to_phone.startswith("whatsapp:") else to_phone
@@ -33,7 +36,7 @@ class WhatsAppConfirmationService:
             )
             
             message = client.messages.create(
-                from_=TWILIO_PHONE_NUMBER,
+                from_=settings.TWILIO_PHONE_NUMBER,
                 body=message_body,
                 to=formatted_to
             )

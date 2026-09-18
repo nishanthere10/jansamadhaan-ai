@@ -30,6 +30,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 # All modules that do `from app.core.database import get_supabase`
 _GET_SUPABASE_TARGETS = [
     "app.core.database.get_supabase",
+    "app.core.security.get_supabase",
     "app.api.auth.get_supabase",
     "app.api.incident.get_supabase",
     "app.api.qr_projects.get_supabase",

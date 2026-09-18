@@ -266,14 +266,11 @@ class TestLogin:
         # Auto-insert must have been called
         mock_supabase.table.return_value.insert.assert_called_once()
 
-    def test_admin_email_gets_authority_role_on_auto_create(self, client, mock_supabase):
-        """
-        GOTCHA #11: 'admin@gov.in' should auto-assign 'authority' role
-        during profile creation. A plain citizen email must get 'citizen'.
-        """
+    def test_email_never_grants_authority_on_auto_create(self, client, mock_supabase):
+        """Self-selected email text must never grant a privileged role."""
         for email, expected_role in [
-            ("admin@gov.in", "authority"),
-            ("collector@gov.in", "authority"),
+            ("admin@gov.in", "citizen"),
+            ("collector@gov.in", "citizen"),
             ("citizen@gmail.com", "citizen"),
         ]:
             # Reset for each iteration

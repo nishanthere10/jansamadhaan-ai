@@ -20,6 +20,22 @@ class Settings(BaseSettings):
     # App
     ENVIRONMENT: str = "production"
 
+    # ── Auth hardening ────────────────────────────────────────────────────────
+    # DEV_AUTH_BYPASS enables the development-only canned-user bypass in
+    # app/core/security.py. It is honoured ONLY when ENVIRONMENT != "production".
+    # Production always requires a real Supabase JWT, regardless of this flag.
+    DEV_AUTH_BYPASS: bool = False
+
+    @property
+    def is_production(self) -> bool:
+        """Single source of truth for production-only restrictions.
+
+        Demo data and demo-only shortcuts are gated on this rather than on a
+        scattered comparison, so an unset ENVIRONMENT (which defaults to
+        production) can never enable them.
+        """
+        return self.ENVIRONMENT.strip().lower() == "production"
+
     # ── Validators ─────────────────────────────────────────────────────────────
     @field_validator("SUPABASE_URL", mode="before")
     @classmethod

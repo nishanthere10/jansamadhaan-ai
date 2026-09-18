@@ -32,3 +32,22 @@ class NotificationService:
             # We don't want notification failure to break the main caller thread
             logger.error(f"Failed to create notification: {e}")
             return None
+
+    @staticmethod
+    def notify_authorities(db: Client, title: str, message: str) -> int:
+        """Fan out one notification per authority account.
+
+        Reserved for events an authority must act on (for example an AI failure
+        that needs a manual reprocess). Routine progress events are never fanned
+        out, which is what keeps this from becoming notification spam.
+        """
+        try:
+            res = db.table("users").select("id").eq("role", "authority").execute()
+        except Exception:
+            logger.exception("Failed to look up authority recipients")
+            return 0
+        sent = 0
+        for row in (res.data or []):
+            if NotificationService.create_notification(db, row.get("id"), title, message):
+                sent += 1
+        return sent

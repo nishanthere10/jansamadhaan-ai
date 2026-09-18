@@ -36,6 +36,7 @@ clean_supabase_url   # Pydantic field_validator (referenced by field name)
 strip_whitespace     # Pydantic field_validator (referenced by field name)
 validate_severity    # Pydantic field_validator
 validate_status      # Pydantic field_validator
+require_resolution_proof  # Pydantic model_validator, exercised by resolution tests
 
 # ── Settings fields (env-driven, may be consumed by deployment config) ────────
 SUPABASE_ANON_KEY
@@ -59,7 +60,6 @@ ai_severity
 ai_department
 ai_confidence_score
 ai_structured_data
-priority_score
 updated_by
 note
 before_image_url

@@ -2,6 +2,7 @@ import logging
 
 from app.ai.services.langgraph_pipeline import get_pipeline
 from app.core.database import get_supabase
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,10 @@ async def process_incident_ai_background(
 
         # Compile structured data fields
         structured_data = final_state.get("structured_visionData", {})
+        # The pipeline computes a 0.0-1.0 severity score; persist it instead of
+        # discarding it. There is no priority_score column, so it lives in JSON.
+        if final_state.get("severity_score") is not None:
+            structured_data["severity_score"] = final_state.get("severity_score")
         if final_state.get("severity_explanation"):
             structured_data["severity_explanation"] = final_state.get("severity_explanation")
         if final_state.get("escalation_level"):
@@ -124,7 +129,10 @@ async def process_incident_ai_background(
             structured_data["spam_score"] = final_state.get("spam_score")
 
         # ── Phase 3: Duplicate Detection & Clustering ────────────
-        cluster_meta = {}
+        # Cluster metadata is persisted by DuplicateDetectionService itself;
+        # it must also survive into the final incidents update so the
+        # orchestration layer can never discard a computed cluster result.
+        cluster_meta: dict = {}
         try:
             from app.ai.services.duplicate_detection_service import (
                 DuplicateDetectionService,
@@ -133,6 +141,11 @@ async def process_incident_ai_background(
             logger.info(f"[{incident_id}] Duplicate detection completed: {cluster_meta}")
         except Exception as dup_err:
             logger.warning(f"[{incident_id}] Duplicate detection failed (non-fatal): {dup_err}")
+
+        if cluster_meta.get("cluster_id"):
+            structured_data["cluster_match_score"] = cluster_meta.get("cluster_match_score", 0.0)
+        if final_state.get("keywords"):
+            structured_data["extracted_keywords"] = final_state["keywords"]
 
         # 4. Save ALL available results to Supabase (even partial)
         # NOTE: Only write columns that exist in the 'incidents' schema.
@@ -147,11 +160,17 @@ async def process_incident_ai_background(
             "ai_category":         final_state.get("category"),
             "ai_severity":         final_state.get("severity"),
             "ai_department":       final_state.get("primary_department"),
-            # priority_score column does not exist in schema — omitted
+            # priority_score is not a domain field; the real 0.0-1.0 value is
+            # severity_score, persisted in ai_structured_data.
             "ai_confidence_score": 0.9,
             "ai_processing_status": ai_status,
             "ai_structured_data":  structured_data if structured_data else None,
         }
+
+        if cluster_meta.get("cluster_id"):
+            incident_updates.update({key: cluster_meta[key] for key in (
+                "cluster_id", "is_primary_incident", "duplicate_count"
+            )})
 
         # Normalize severity to valid enum {'low', 'medium', 'high', 'critical'}
         raw_sev = final_state.get("severity")
@@ -204,6 +223,55 @@ async def process_incident_ai_background(
             logger.warning(f"Failed to insert AI metadata for {incident_id} (table may not exist): {meta_err}")
 
         logger.info(f"Successfully processed AI Pipeline for incident: {incident_id} (status={ai_status})")
+
+        # Recipient notifications: only events someone can act on, never a
+        # progress ping per pipeline stage. Best effort - a notification
+        # problem must never fail an analysis that already persisted.
+        try:
+            lookup = (
+                db.table("incidents")
+                .select("citizen_id, tracking_id")
+                .eq("id", incident_id)
+                .execute()
+            )
+            row = (lookup.data or [{}])[0]
+            citizen_id = row.get("citizen_id")
+            label = row.get("tracking_id") or incident_id
+
+            if ai_status == "completed" and citizen_id and final_state.get("category"):
+                routing = final_state.get("primary_department") or "the concerned department"
+                NotificationService.create_notification(
+                    db,
+                    citizen_id,
+                    "Complaint Analysed",
+                    f"Your complaint was classified as '{final_state['category']}' "
+                    f"and routed to {routing}.",
+                )
+            elif ai_status == "failed":
+                # A citizen cannot act on a pipeline failure; an authority can.
+                NotificationService.notify_authorities(
+                    db,
+                    "AI Processing Failed",
+                    f"AI analysis failed for incident {label}. "
+                    f"A manual reprocess is required.",
+                )
+
+            if (
+                cluster_meta.get("cluster_id")
+                and cluster_meta.get("is_primary_incident") is False
+                and citizen_id
+            ):
+                # Only the reporter of the duplicate is told; the primary's
+                # citizen is not pinged again for every new duplicate.
+                NotificationService.create_notification(
+                    db,
+                    citizen_id,
+                    "Report Linked to an Existing Complaint",
+                    f"Your report {label} matches an existing complaint and was "
+                    f"linked to cluster {cluster_meta['cluster_id']}.",
+                )
+        except Exception as notify_err:
+            logger.warning(f"Notification step failed for {incident_id}: {notify_err}")
 
     except Exception as e:
         logger.exception(f"Failed AI Background Processing for {incident_id}: {str(e)}")

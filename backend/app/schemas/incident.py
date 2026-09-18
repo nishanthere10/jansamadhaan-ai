@@ -1,5 +1,5 @@
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class IncidentCreateRequest(BaseModel):
@@ -67,7 +67,6 @@ class IncidentResponse(BaseModel):
     ai_department: str | None = None
     ai_confidence_score: float | None = None
     ai_structured_data: dict | None = None
-    priority_score: float | None = None
 
 
 class IncidentListResponse(BaseModel):
@@ -95,6 +94,18 @@ class IncidentStatusUpdate(BaseModel):
         if v_clean not in allowed:
             raise ValueError(f"status must be one of {allowed}")
         return v_clean
+
+    @model_validator(mode="after")
+    def require_resolution_proof(self):
+        """Resolution proof is mandatory for EVERY role.
+
+        A worker or authority may not transition an incident to ``resolved``
+        without a resolution image — the AI verification block otherwise never
+        runs and proof-of-resolution can be silently bypassed.
+        """
+        if self.status == "resolved" and not (self.resolution_image_url or "").strip():
+            raise ValueError("resolution_image_url is required when resolving an incident")
+        return self
 
 
 class IncidentTriageUpdate(BaseModel):

@@ -9,13 +9,15 @@ Flow:
 """
 
 import logging
-import os
 import re
 
 from fastapi import BackgroundTasks, HTTPException, Request
 
 from app.core.database import get_supabase
 from app.services.incident_service import IncidentService
+from app.whatsapp_ai.services.whatsapp_confirmation_service import (
+    WhatsAppConfirmationService,
+)
 from app.whatsapp_ai.services.whatsapp_media_service import WhatsAppMediaService
 
 # Services
@@ -48,12 +50,10 @@ class TwilioWebhookService:
         """
         Conversational multi-step pipeline for WhatsApp complaint intake.
         """
-        # 1. Verify Signature
-        is_valid = await TwilioSignatureVerifier.verify_request(request)
-        if not is_valid:
-            if os.getenv("ENVIRONMENT") == "production":
-                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
-            logger.warning("Invalid Twilio signature — processing anyway in dev mode.")
+        # 1. Verify Signature. The verifier owns the environment gate and fails
+        # closed outside development, so this is the single enforcement point.
+        if not await TwilioSignatureVerifier.verify_request(request):
+            raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
         # 2. Parse Payload
         parsed = await WhatsAppMessageParser.parse_webhook(request)
@@ -302,6 +302,11 @@ class TwilioWebhookService:
 
             # Clear session after successful submission
             WhatsAppSessionManager.clear_session(phone)
+
+            # Exactly one confirmation per successfully created complaint. It is
+            # never sent on the failure path, and a redelivered webhook is stopped
+            # earlier by MessageSid deduplication, so retries cannot duplicate it.
+            WhatsAppConfirmationService.send_confirmation(phone, tracking_id)
 
             return {"status": "success", "tracking_id": tracking_id}
 

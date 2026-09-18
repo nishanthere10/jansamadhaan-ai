@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 # Session timeout in seconds (30 minutes)
 SESSION_TIMEOUT = 30 * 60
 
+# Bound the in-memory store: an abandoned conversation must not leak forever.
+# Expired sessions are swept whenever a new session starts, and the least
+# recently active sessions are evicted first once the cap is reached.
+MAX_ACTIVE_SESSIONS = 5_000
+
 
 @dataclass
 class ConversationSession:
@@ -60,11 +65,34 @@ class WhatsAppSessionManager:
         return session
 
     @staticmethod
+    def sweep_expired() -> int:
+        """Drop every expired session and return how many were removed."""
+        stale = [phone for phone, s in _sessions.items() if s.is_expired()]
+        for phone in stale:
+            del _sessions[phone]
+        if stale:
+            logger.info(f"Swept {len(stale)} expired WhatsApp session(s)")
+        return len(stale)
+
+    @staticmethod
+    def _enforce_capacity() -> None:
+        """Evict least recently active sessions beyond MAX_ACTIVE_SESSIONS."""
+        while len(_sessions) > MAX_ACTIVE_SESSIONS:
+            oldest = min(_sessions, key=lambda phone: _sessions[phone].updated_at)
+            del _sessions[oldest]
+            logger.warning(
+                f"Evicted least recently active session {oldest} "
+                f"(cap {MAX_ACTIVE_SESSIONS})"
+            )
+
+    @staticmethod
     def create_session(phone_number: str) -> ConversationSession:
         """Create a fresh conversation session."""
+        WhatsAppSessionManager.sweep_expired()
         session = ConversationSession(phone_number=phone_number)
         _sessions[phone_number] = session
-        logger.info(f"New session created for {phone_number}")
+        WhatsAppSessionManager._enforce_capacity()
+        logger.info(f"New session created for {phone_number} (active={len(_sessions)})")
         return session
 
     @staticmethod
@@ -88,8 +116,8 @@ class WhatsAppSessionManager:
 
     @staticmethod
     def get_session_data(phone_number: str) -> dict[str, Any] | None:
-        """Get all collected data from the session as a dict."""
-        session = _sessions.get(phone_number)
+        """Get all collected data from a non-expired session as a dict."""
+        session = WhatsAppSessionManager.get_session(phone_number)
         if not session:
             return None
         return {

@@ -5,6 +5,8 @@ import time
 from fastapi import BackgroundTasks
 from supabase import Client
 
+from app.services.notification_service import NotificationService
+
 logger = logging.getLogger(__name__)
 
 class IncidentService:
@@ -69,6 +71,19 @@ class IncidentService:
                 location_lng,
                 address
             )
+
+            # One durable receipt per created complaint, carrying the tracking
+            # ID the citizen needs later. Guarded so no future notification
+            # change can turn a created incident into a reported failure.
+            try:
+                NotificationService.create_notification(
+                    db,
+                    citizen_id,
+                    "Complaint Received",
+                    f"Your complaint has been registered. Tracking ID: {tracking_id}.",
+                )
+            except Exception:
+                logger.warning("Receipt notification failed for %s", tracking_id)
 
             return {
                 "success": True,

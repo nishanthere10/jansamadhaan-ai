@@ -1,9 +1,9 @@
 """
 tests/test_schema_gotchas.py
 ─────────────────────────────
-Comprehensive tests verifying alignment with the live Supabase SQL schema:
+Application contract tests using mocked persistence, not live-schema validation:
 - public.users
-- public.incidents (no updated_at column, ai_department vs department, dual coordinates)
+- public.incidents (deferred timestamp updates, ai_department, dual coordinates)
 - public.incident_ai_metadata
 - public.duplicate_complaints
 - public.trust_scores
@@ -85,7 +85,16 @@ class TestIncidentSchemaAlignment:
                 image_url="https://images.unsplash.com/photo-1541888946425-d0fbb18086f6",
             )
 
-        insert_args = mock_db.table.return_value.insert.call_args[0][0]
+        # Incident creation also writes a citizen receipt notification, so
+        # select the incident insert explicitly instead of assuming it is
+        # whichever insert ran last. It must still happen exactly once.
+        incident_inserts = [
+            call[0][0]
+            for call in mock_db.table.return_value.insert.call_args_list
+            if "citizen_id" in call[0][0]
+        ]
+        assert len(incident_inserts) == 1
+        insert_args = incident_inserts[0]
 
         # Verify dual user references
         assert insert_args["citizen_id"] == "citizen-uuid-456"
@@ -103,9 +112,8 @@ class TestIncidentSchemaAlignment:
 
     def test_status_update_does_not_send_updated_at_column(self, authority_user):
         """
-        SCHEMA GOTCHA:
-        public.incidents has NO updated_at column in the SQL schema.
-        Sending updated_at causes PostgreSQL error 42703 (column does not exist).
+        Migration 005 adds updated_at with an insert default only.
+        Explicit timestamp-update semantics are deferred; preserve current payloads.
         """
         app.dependency_overrides[get_current_user] = lambda: authority_user
         mock_db = MagicMock()
@@ -163,81 +171,90 @@ class TestIncidentSchemaAlignment:
         assert payload.get("ai_department") == "Public Works Department"
         assert "updated_at" not in payload, "Must not send 'updated_at' column to incidents"
 
-    def test_get_incident_updates_falls_back_if_table_missing(self, citizen_user):
-        """
-        SCHEMA GOTCHA:
-        If public.incident_updates table does not exist in the database,
-        GET /api/v1/incidents/{id}/updates must fall back to querying
-        public.resolution_verifications instead of crashing with a 500 error.
-        """
+    @pytest.mark.parametrize("error", [
+        'relation "public.incident_updates" does not exist',
+        "database connection unavailable",
+    ])
+    def test_get_incident_updates_fails_closed(self, citizen_user, error):
+        """Audit read failures must not return a fabricated/partial timeline."""
         app.dependency_overrides[get_current_user] = lambda: citizen_user
         mock_db = MagicMock()
+        incidents = MagicMock()
+        incidents.select.return_value.eq.return_value.execute.return_value.data = [
+            {"citizen_id": citizen_user["id"]}
+        ]
+        updates = MagicMock()
+        updates.select.return_value.eq.return_value.order.return_value.execute.side_effect = RuntimeError(error)
+        mock_db.table.side_effect = lambda name: incidents if name == "incidents" else updates
+        try:
+            with patch("app.api.incident.get_supabase", return_value=mock_db):
+                response = TestClient(app).get("/api/v1/incidents/inc-100/updates")
+            assert response.status_code == 500
+            assert "data" not in response.json()
+            assert "resolution_verifications" not in [c.args[0] for c in mock_db.table.call_args_list]
+        finally:
+            app.dependency_overrides.clear()
 
-        mock_incidents = MagicMock()
-        mock_incidents.select.return_value.eq.return_value.execute.return_value = (
-            MagicMock(data=[{"citizen_id": citizen_user["id"]}])
-        )
+    @pytest.mark.parametrize("rows", [[], [{"id": "audit-1", "status": "in-progress"}]])
+    def test_get_incident_updates_returns_audit_rows(self, citizen_user, rows):
+        app.dependency_overrides[get_current_user] = lambda: citizen_user
+        mock_db = MagicMock()
+        query = mock_db.table.return_value.select.return_value.eq.return_value
+        query.execute.return_value.data = [{"citizen_id": citizen_user["id"]}]
+        query.order.return_value.execute.return_value.data = rows
+        try:
+            with patch("app.api.incident.get_supabase", return_value=mock_db):
+                response = TestClient(app).get("/api/v1/incidents/inc-100/updates")
+            assert response.status_code == 200
+            assert response.json()["data"] == rows
+            query.order.assert_called_once_with("created_at", desc=False)
+        finally:
+            app.dependency_overrides.clear()
 
-        mock_incident_updates = MagicMock()
-        mock_incident_updates.select.return_value.eq.return_value.order.return_value.execute.side_effect = (
-            Exception('relation "public.incident_updates" does not exist')
-        )
-
-        mock_rv = MagicMock()
-        mock_rv.select.return_value.eq.return_value.order.return_value.execute.return_value = (
-            MagicMock(data=[
-                {
-                    "id": "rv-1",
-                    "incident_id": "inc-100",
-                    "verification_status": "verified",
-                    "verification_score": 0.95,
-                    "before_image_url": "http://img/before.jpg",
-                    "after_image_url": "http://img/after.jpg",
-                    "created_at": "2026-09-13T12:00:00Z",
-                }
-            ])
-        )
-
-        def table_router(table_name):
-            if table_name == "incidents":
-                return mock_incidents
-            elif table_name == "incident_updates":
-                return mock_incident_updates
-            elif table_name == "resolution_verifications":
-                return mock_rv
-            return MagicMock()
-
-        mock_db.table.side_effect = table_router
-
-        with patch("app.api.incident.get_supabase", return_value=mock_db):
-            client = TestClient(app)
-            response = client.get("/api/v1/incidents/inc-100/updates")
-
-        app.dependency_overrides.clear()
-        assert response.status_code == 200
-        body = response.json()
-        assert body["success"] is True
-        assert len(body["data"]) == 1
-        assert body["data"][0]["status"] == "verified"
+    @pytest.mark.parametrize("error", [
+        'column "assigned_to" does not exist',
+        "assigned_to violates foreign key constraint",
+    ])
+    def test_assignment_failure_does_not_retry_without_worker(self, authority_user, error):
+        """SCHEMA HARDENING (Phase 4): an assignment write failure must surface,
+        never retry with the worker dropped, and never emit notifications.
+        The audit row is written first by design; see test_phase4_consistency.py.
+        """
+        app.dependency_overrides[get_current_user] = lambda: authority_user
+        mock_db = MagicMock()
+        incidents = mock_db.table.return_value
+        incidents.update.return_value.eq.return_value.execute.side_effect = RuntimeError(error)
+        try:
+            with (
+                patch("app.api.incident.get_supabase", return_value=mock_db),
+                patch("app.api.incident.NotificationService.create_notification") as notify,
+            ):
+                response = TestClient(app).put(
+                    "/api/v1/incidents/inc-100/status",
+                    json={"status": "assigned", "worker_id": "worker-123"},
+                )
+            assert response.status_code == 500
+            incidents.update.assert_called_once_with(
+                {"status": "assigned", "assigned_to": "worker-123"}
+            )
+            notify.assert_not_called()
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestWorkerResilience:
-    def test_worker_list_incidents_fallback_when_assigned_to_missing(self, worker_user):
+    def test_worker_list_fails_closed_when_assigned_to_missing(self, worker_user):
         """
-        SCHEMA GOTCHA:
-        If assigned_to column is not present in public.incidents,
-        worker incident listing should gracefully fall back rather than crash.
+        SCHEMA HARDENING (Phase 4):
+        Migration 005 guarantees public.incidents.assigned_to. If the column
+        is genuinely absent, the worker list must FAIL CLOSED — it must never
+        silently fall back to returning all incidents.
         """
         app.dependency_overrides[get_current_user] = lambda: worker_user
         mock_db = MagicMock()
 
-        # First query with .eq("assigned_to", ...) throws column does not exist
-        # Fallback query without assigned_to succeeds
         mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.side_effect = (
             Exception('column "assigned_to" does not exist')
-        )
-        mock_db.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value = (
-            MagicMock(data=[{"id": "inc-fallback", "title": "Nearby Road Hazard", "citizen_id": None}])
         )
 
         with patch("app.api.incident.get_supabase", return_value=mock_db):
@@ -245,9 +262,7 @@ class TestWorkerResilience:
             response = client.get("/api/v1/incidents")
 
         app.dependency_overrides.clear()
-        assert response.status_code == 200
-        body = response.json()
-        assert body["success"] is True
+        assert response.status_code == 500  # internal error, never a data leak
 
 
 class TestDedicatedSchemaTables:

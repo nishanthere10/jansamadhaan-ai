@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from fastapi import status as http_status
 from supabase import Client
 
+from app.core.config import settings
 from app.core.database import get_supabase
 from app.core.security import get_current_user
 from app.schemas.incident import (
@@ -14,6 +15,7 @@ from app.schemas.incident import (
 )
 from app.services.incident_service import IncidentService
 from app.services.notification_service import NotificationService
+from app.services.resolution_service import submit_resolution
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,23 +73,13 @@ def list_incidents(user: dict = Depends(get_current_user)):
                 .execute()
             )
         elif user["role"] == "worker":
-            try:
-                res = (
-                    db.table("incidents")
-                    .select("*")
-                    .eq("assigned_to", user["id"])
-                    .order("created_at", desc=True)
-                    .execute()
-                )
-            except Exception as w_err:
-                logger.warning(f"Could not filter incidents by assigned_to (column may not exist): {w_err}")
-                res = (
-                    db.table("incidents")
-                    .select("*")
-                    .order("created_at", desc=True)
-                    .limit(50)
-                    .execute()
-                )
+            res = (
+                db.table("incidents")
+                .select("*")
+                .eq("assigned_to", user["id"])
+                .order("created_at", desc=True)
+                .execute()
+            )
         else:
             # authority â€” see all
             res = (
@@ -151,8 +143,9 @@ def get_incident_by_id(
                 detail="Not authorized to view this incident"
             )
 
-        # Security check: workers can only view their assigned incidents (if assigned_to is set)
-        if user["role"] == "worker" and incident.get("assigned_to") and incident.get("assigned_to") != user["id"]:
+        # Security check: workers can only view their assigned incidents.
+        # Unassigned incidents are authority-only (fail closed).
+        if user["role"] == "worker" and incident.get("assigned_to") != user["id"]:
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to view this incident"
@@ -197,10 +190,23 @@ MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 @router.post("/upload")
 def upload_image(
+    incident_id: str | None = None,
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
 ):
     db: Client = get_supabase()
+    if incident_id:
+        try:
+            incident_id = str(uuid.UUID(incident_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid incident ID") from exc
+        incident = db.table("incidents").select("assigned_to").eq("id", incident_id).execute()
+        if not incident.data:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        if user["role"] not in {"worker", "authority"} or (
+            user["role"] == "worker" and incident.data[0].get("assigned_to") != user["id"]
+        ):
+            raise HTTPException(status_code=403, detail="Not authorized to upload resolution proof")
 
     # â”€â”€ Validate file type â”€â”€
     if file.content_type not in ALLOWED_MIME_TYPES:
@@ -234,8 +240,10 @@ def upload_image(
             detail=f"Failed to read file: {str(e)}",
         ) from e
 
-    ext = (file.filename or "upload").rsplit(".", 1)[-1].lower()
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}[file.content_type]
     file_name = f"{uuid.uuid4()}.{ext}"
+    if incident_id:
+        file_name = f"resolution/{incident_id}/{user['id']}/{file_name}"
 
     try:
         db.storage.from_("grievance_images").upload(
@@ -258,6 +266,23 @@ def upload_image(
 
 # â”€â”€ Update Incident Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+def _compensate_audit_row(db: Client, audit_id: str | None, incident_id: str) -> None:
+    """Best-effort removal of an audit row whose state change did not apply.
+
+    Sequential PostgREST writes are not transactional, so a failed state change is
+    compensated instead of leaving the timeline claiming a transition that never
+    landed. The residual (a crash between the two writes) is tracked in
+    remaining.md; true atomicity requires an RPC migration.
+    """
+    if not audit_id:
+        logger.error("No audit row id captured for %s; timeline may be stale", incident_id)
+        return
+    try:
+        db.table("incident_updates").delete().eq("id", audit_id).execute()
+    except Exception:
+        logger.exception("Failed to remove orphaned audit row %s for %s", audit_id, incident_id)
+
+
 @router.put("/{incident_id}/status")
 def update_incident_status(
     incident_id: str,
@@ -273,20 +298,44 @@ def update_incident_status(
             detail="Only authority or worker accounts can update incident status.",
         )
 
+    if req.status == "resolved":
+        try:
+            return submit_resolution(db, incident_id, req, user)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Resolution persistence failed for %s", incident_id)
+            raise HTTPException(status_code=503, detail="Unable to complete resolution recording. Reload the incident before retrying.") from exc
+
     if role == "worker":
-        # BOLA protection: worker can only update incidents assigned to them
+        # BOLA protection: a worker may only change an incident assigned to them.
+        # An unassigned incident is authority-only (fail closed): the previous
+        # truthiness check let any worker act on every unassigned incident and let
+        # a missing incident through. This now matches the detail, timeline and
+        # upload endpoints.
         check = db.table("incidents").select("assigned_to").eq("id", incident_id).execute()
-        if check.data and check.data[0].get("assigned_to") and check.data[0].get("assigned_to") != user["id"]:
+        if not check.data:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Incident not found")
+        if check.data[0].get("assigned_to") != user["id"]:
             raise HTTPException(
                 status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="Workers can only update incidents assigned to them.",
             )
 
-    # Note: 'updated_at' is omitted because public.incidents has no updated_at column in the SQL schema
+    # incidents.updated_at is DB-maintained by the 008 trigger; the application
+    # deliberately never writes the column so status payloads stay schema-stable.
     update_data: dict = {"status": req.status}
 
     if role == "authority" and req.worker_id:
         if req.worker_id.startswith("mock-"):
+            # Demo substitution is development-only: outside development it would
+            # silently assign the incident to a different worker than the one
+            # selected, or seed a demo account. Reject instead of guessing.
+            if settings.is_production:
+                raise HTTPException(
+                    status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Unknown worker. Select a registered worker account.",
+                )
             real_workers = db.table("users").select("id").eq("role", "worker").limit(1).execute()
             if real_workers.data:
                 update_data["assigned_to"] = real_workers.data[0]["id"]
@@ -306,52 +355,59 @@ def update_incident_status(
         else:
             update_data["assigned_to"] = req.worker_id
 
+    # Migration 005 requires the audit table. The audit row is written BEFORE the
+    # state change: a failing audit INSERT must never be masked by a successful
+    # response, and a failed state change compensates instead of reporting success.
+    audit_row = {
+        "incident_id": incident_id,
+        "updated_by": user["id"],
+        "status": req.status,
+        "note": req.resolution_notes,
+        "after_image_url": req.resolution_image_url,
+    }
+    audit_id: str | None = None
     try:
-        try:
-            db.table("incidents").update(update_data).eq("id", incident_id).execute()
-        except Exception as upd_err:
-            # If assigned_to column does not exist in the incidents table, update status without it
-            if "assigned_to" in update_data and ("column" in str(upd_err).lower() or "assigned_to" in str(upd_err).lower()):
-                logger.warning(f"assigned_to column not in incidents table; updating status without assigned_to: {upd_err}")
-                safe_update = {k: v for k, v in update_data.items() if k != "assigned_to"}
-                db.table("incidents").update(safe_update).eq("id", incident_id).execute()
-            else:
-                raise
+        audit_res = db.table("incident_updates").insert(audit_row).execute()
+        audit_rows = getattr(audit_res, "data", None) or []
+        if audit_rows and isinstance(audit_rows[0], dict):
+            audit_id = audit_rows[0].get("id")
+    except Exception as audit_err:
+        logger.exception("Failed to record incident update audit row")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record the incident update; the incident was not changed.",
+        ) from audit_err
 
-        # Best-effort insert into incident_updates (table may not exist in all Supabase setups)
-        try:
-            update_log = {
-                "incident_id": incident_id,
-                "updated_by": user["id"],
-                "status": req.status,
-                "note": req.resolution_notes,
-                "after_image_url": req.resolution_image_url,
-            }
-            db.table("incident_updates").insert(update_log).execute()
-        except Exception as log_err:
-            logger.warning(f"Could not insert incident_updates row (table may not exist): {log_err}")
+    try:
+        db.table("incidents").update(update_data).eq("id", incident_id).execute()
+    except Exception as update_err:
+        _compensate_audit_row(db, audit_id, incident_id)
+        logger.exception("Failed to update incident status")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update incident: {str(update_err)}",
+        ) from update_err
 
-        # Fetch incident to know who to notify
+    # Notifications are post-commit best effort: a notification failure must not
+    # turn an already-applied status change into an error response.
+    try:
         inc_res = db.table("incidents").select("title, citizen_id, tracking_id, image_url").eq("id", incident_id).execute()
         if inc_res.data:
             incident = inc_res.data[0]
-            
+
             # Notify citizen
             NotificationService.create_notification(
-                db, 
-                incident["citizen_id"], 
+                db,
+                incident["citizen_id"],
                 "Incident Status Updated",
                 f"Your incident '{incident['title']}' is now {req.status}."
             )
-            
+
             # Determine actual worker to notify
             notify_worker_id = req.worker_id
             if notify_worker_id and notify_worker_id.startswith("mock-"):
-                if "assigned_to" in update_data:
-                    notify_worker_id = update_data["assigned_to"]
-                else:
-                    notify_worker_id = None
-                    
+                notify_worker_id = update_data.get("assigned_to")
+
             # Notify worker if newly assigned and it's a real worker
             if role == "authority" and notify_worker_id:
                 NotificationService.create_notification(
@@ -360,70 +416,14 @@ def update_incident_status(
                     "New Assignment",
                     f"You have been assigned to incident '{incident['title']}' ({incident['tracking_id']})."
                 )
-                
-            # If resolved with an image, trigger resolution verification
-            if req.status == "resolved" and req.resolution_image_url and incident.get("image_url"):
-                from app.ai.services.resolution_verification_service import (
-                    ResolutionVerificationService,
-                )
-                current_user_id = user["id"]
-                def background_verify():
-                    try:
-                        verification = ResolutionVerificationService.verify_resolution(
-                            before_url=incident["image_url"],
-                            after_url=req.resolution_image_url,
-                            incident_title=incident["title"]
-                        )
-                        is_verified = bool(verification.get("resolution_verified", False))
-                        confidence = float(verification.get("confidence", 0.0))
-                        status_label = "resolved" if is_verified else "in-progress"
+    except Exception:
+        logger.exception("Post-update notifications failed for %s", incident_id)
 
-                        # 1. Record in public.resolution_verifications (matches database schema)
-                        try:
-                            db.table("resolution_verifications").insert({
-                                "incident_id": incident_id,
-                                "before_image_url": incident.get("image_url"),
-                                "after_image_url": req.resolution_image_url,
-                                "verification_score": confidence,
-                                "verification_status": "verified" if is_verified else "rejected",
-                                "manual_review_required": not is_verified,
-                            }).execute()
-                        except Exception as rv_err:
-                            logger.warning(f"Could not record resolution_verification row: {rv_err}")
-
-                        # 2. Try recording in incident_updates if table exists
-                        try:
-                            db.table("incident_updates").insert({
-                                "incident_id": incident_id,
-                                "updated_by": current_user_id,
-                                "status": status_label,
-                                "note": f"AI Verification: {verification.get('notes', '')} (Confidence: {confidence})"
-                            }).execute()
-                        except Exception:
-                            pass
-
-                        if not is_verified:
-                            # Revert incident back to in-progress so field work can be completed
-                            db.table("incidents").update({
-                                "status": "in-progress"
-                            }).eq("id", incident_id).execute()
-                            logger.info(f"Reverted incident {incident_id} to in-progress due to unverified resolution proof.")
-                    except Exception as e:
-                        logger.error(f"Background verification failed: {e}")
-                
-                background_tasks.add_task(background_verify)
-
-        return {
-            "success": True,
-            "message": "Incident updated successfully",
-            "data": update_data,
-        }
-    except Exception as e:
-        logger.exception("Failed to update incident status")
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update incident: {str(e)}",
-        ) from e
+    return {
+        "success": True,
+        "message": "Incident updated successfully",
+        "data": update_data,
+    }
 
 # â”€â”€ Update Incident Triage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -487,46 +487,31 @@ def get_incident_updates(
                     detail="Not authorized to view updates for this incident."
                 )
 
-        # Try fetching from incident_updates; fallback to resolution_verifications if table missing
-        try:
-            res = (
-                db.table("incident_updates")
-                .select("*")
-                .eq("incident_id", incident_id)
-                .order("created_at", desc=False)
-                .execute()
-            )
-            return {
-                "success": True,
-                "message": "Incident updates fetched successfully",
-                "data": res.data or [],
-            }
-        except Exception as tbl_err:
-            logger.warning(f"incident_updates table query failed, falling back to resolution_verifications: {tbl_err}")
-            rv_res = (
-                db.table("resolution_verifications")
-                .select("*")
-                .eq("incident_id", incident_id)
-                .order("created_at", desc=False)
-                .execute()
-            )
-            data = [
-                {
-                    "id": r["id"],
-                    "incident_id": r["incident_id"],
-                    "status": r.get("verification_status"),
-                    "note": f"Resolution Verification (Confidence: {r.get('verification_score', 0)})",
-                    "before_image_url": r.get("before_image_url"),
-                    "after_image_url": r.get("after_image_url"),
-                    "created_at": r.get("created_at"),
-                }
-                for r in (rv_res.data or [])
-            ]
-            return {
-                "success": True,
-                "message": "Incident updates fetched successfully",
-                "data": data,
-            }
+        # Security check: a worker may only read the timeline of an incident
+        # assigned to them. Unassigned incidents are authority-only, consistent
+        # with the detail endpoint; the timeline leaks notes and proof URLs.
+        if user["role"] == "worker":
+            inc_check = db.table("incidents").select("assigned_to").eq("id", incident_id).execute()
+            if not inc_check.data or inc_check.data[0].get("assigned_to") != user["id"]:
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view updates for this incident."
+                )
+
+        # Migration 005 requires the audit table. Do not disguise read failures
+        # as a complete timeline assembled from a different record type.
+        res = (
+            db.table("incident_updates")
+            .select("*")
+            .eq("incident_id", incident_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        return {
+            "success": True,
+            "message": "Incident updates fetched successfully",
+            "data": res.data or [],
+        }
     except HTTPException:
         raise
     except Exception as e:
