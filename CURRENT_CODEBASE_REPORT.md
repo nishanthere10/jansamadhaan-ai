@@ -1,8 +1,10 @@
 # Current Codebase Report - Jan Samadhan AI
 
-**Date:** 2026-09-17 (post backend audit) - **Branch:** `initial-v1` - **base:** `e271bf3`
-**Commit chain:** `796bc1f` backend infra -> `e98e133` frontend cleanup -> `fe9c0ba` backend audit -> docs commit (this file)
-**Working tree:** CLEAN - 0 modified, 0 untracked.
+**Date:** 2026-09-18 (post hardening, Phases 1-7) - **Branch:** `initial-v1` - **base:** `e271bf3`
+**Commit chain:** `796bc1f` backend infra -> `e98e133` frontend cleanup -> `fe9c0ba` backend audit ->
+docs `279d3e4` -> `b1e56d9` backend hardening -> `e9b79b2` frontend hardening -> `33cab04` CI -> `43f8ff4` docs
+**Working tree:** CLEAN except the user's untracked pre-existing `report.md` (deliberately not committed).
+**Remote:** `origin/initial-v1` points at base `e271bf3`; local branch is **8 commits ahead** (nothing pushed yet).
 
 ---
 
@@ -16,16 +18,26 @@
 | Frontend commits | DONE (`e98e133`) - incl. first-ever tracking of `index.html`, `vite.config.ts`, `tsconfig.json`, `package.json` |
 | Backend logging / middleware / migration / pytest suite | DONE (`796bc1f`) |
 | Backend dead-code audit (DELETE / FIX / KEEP+REGISTER) | DONE (`fe9c0ba`) |
-| Backend gates: pytest 49/49 - ruff 0 - vulture 0 | DONE |
+| **Phase 1 auth hardening** (401 on bad/expired tokens, gated dev bypass, substring match removed) | DONE (`b1e56d9`), tested |
+| **Phase 2 resolution integrity** (proof mandatory, tri-state verification, atomic RPC design) | CODE DONE (`b1e56d9`); PostgreSQL validation OPEN |
+| **Phase 3 duplicate persistence** (cluster_id / primary / real match score persisted) | DONE (`b1e56d9`), tested |
+| **Phase 4 schema consistency** (audit-before-state, fallbacks removed, `priority_score` gone, 008 trigger) | CODE DONE (`b1e56d9`); PostgreSQL validation OPEN |
+| **Phase 5 WhatsApp hardening** (bounded stores, single signature enforcement point, confirmation wired) | DONE (`b1e56d9`), tested |
+| **Phase 6 notification lifecycle** (receipt / AI completed / AI failed / duplicate-linked) | DONE (`b1e56d9`), tested |
+| **Phase 7 authorization sweep** (worker BOLA + timeline leak closed, demo bench dev-only) | DONE (`b1e56d9`), tested - 12/12 pass |
+| Backend gates: pytest 145/145 - ruff 0 - vulture 0 | DONE (was 49/49 before hardening) |
+| Frontend hardening (no fabricated token, 401 -> logout redirect, role guards restored) | DONE (`e9b79b2`), 3/3 unit tests pass |
+| **CI workflow** (`.github/workflows/ci.yml`) | DONE (`33cab04`) - runs backend + frontend gates |
 | `DEAD_CODE_REGISTER.md` | DONE - frontend + backend sections final, review dates set |
-| Working tree protection (Phase 1) | DONE - everything committed, tree clean |
-| Visual smoke test (Phase 2) | NOT DONE - the only remaining frontend gate |
-| Push to remote | NOT DONE - branch exists on one machine only |
-| CI (Phase 13) | NOT DONE - every CI command already proven green locally |
-| E2E product flow (Phases 9-11) + security audit (12) | NOT DONE - needs live Supabase/Groq creds |
+| Working tree protection (Phase 1) | DONE - everything committed |
+| Visual smoke test | NOT DONE - still the only unverified frontend gate |
+| Push to remote | NOT DONE - upstream configured, 8 commits unpushed |
+| **Migrations 006/007/008 applied + `finalize_resolution` RPC verified** | NOT DONE - P0 deployment blocker |
+| E2E product flow + live-stack re-verification | NOT DONE - needs live Supabase/Groq/Twilio creds |
 
-> Most important fact: the work is now **SAFE** (committed, clean tree) but not yet
-> **SHARED** (unpushed) and not yet **DEMONSTRATED** (no human-eyeball smoke test).
+> Most important fact: the work is **SAFE** (committed, clean tree) and now
+> **HARDENED** (auth/authorization/resolution/schema/WhatsApp/notifications), but it
+> is still not **DEPLOYABLE** (migrations unapplied, RPC unverified, no live E2E run).
 
 ---
 
@@ -94,18 +106,95 @@ Pre-existing uncommitted backend work, committed first to separate the histories
 - `requirements-dev.txt`: ruff + vulture pinned; install with
   `uv pip install -r requirements-dev.txt`.
 
-### 2.4 docs commit: backend audit dispositions recorded in `DEAD_CODE_REGISTER.md`, plus this report
+### 2.4 docs commit `279d3e4`: backend audit dispositions recorded in `DEAD_CODE_REGISTER.md`, plus this report
+
+### 2.5 `b1e56d9` backend: hardening Phases 1-7 (33 files, +2490/-360)
+
+**Phase 1 - authentication (`core/security.py`, `core/config.py`, `api/auth.py`):**
+missing/malformed/expired/invalid tokens all return 401 (an invalid token could
+previously resolve to an authority user); dev bypass needs `ENVIRONMENT != production`
+**AND** `DEV_AUTH_BYPASS=true`; Aadhar mock login gated the same way; token
+substring matching removed; `is_production` defaults unset `ENVIRONMENT` to production.
+
+**Phase 2 - resolution integrity (`api/incident.py`, `services/resolution_service.py` [new],
+`ai/services/resolution_verification_service.py`):** proof image mandatory for worker
+AND authority `resolved`; verification is an explicit tri-state
+(verified/rejected/error) so provider/network/image failure can never be reported as
+"rejected repair"; finalization goes through the `finalize_resolution` RPC (007);
+pending attempts recorded in `resolution_verifications` (006).
+
+**Phase 3 - duplicate persistence (`ai/tasks.py`, `ai/services/duplicate_detection_service.py`):**
+orchestrator persists `cluster_id`, `is_primary_incident`, `duplicate_count`; real
+calculated match score replaces the hardcoded `0.85`.
+
+**Phase 4 - schema consistency:** audit row written BEFORE the state change with
+compensation; assignment-write and timeline-substitution fallbacks removed;
+phantom `priority_score` dropped end to end (backend + frontend) in favour of the real
+0.0-1.0 `severity_score`; migration 008 keeps `updated_at` correct via trigger.
+
+**Phase 5 - WhatsApp (`whatsapp_ai/`):** `OrderedDict` MessageSid dedup (1h TTL, 10k
+cap, oldest-first eviction) and bounded session store (`MAX_ACTIVE_SESSIONS=5000`,
+sweep on create, LRU eviction, expired reads return None); `TwilioSignatureVerifier`
+is the single enforcement point (dev bypass only in development, fail-closed when
+`TWILIO_AUTH_TOKEN` is unset); the existing confirmation service is wired exactly
+once after a successful creation.
+
+**Phase 6 - notifications (`services/notification_service.py`, `services/incident_service.py`):**
+"Complaint Received" receipt with tracking ID, AI completed (citizen), AI failed
+(authority fan-out - the only actionable recipient), duplicate-linked (duplicate
+reporter). Best-effort, no per-stage spam.
+
+**Phase 7 - authorization:** a worker may only update an incident assigned to them
+(previously **any** unassigned incident was updatable - a BOLA hole); timeline read
+gated like detail (any worker could previously read any incident's notes + proof
+URLs); the 6-worker demo bench is development-only and mock ids are rejected with
+422 in production (they silently reassigned incidents before).
+
+**Tests:** 96 tests added across `test_security_hardening.py`, `test_resolution_flow.py`,
+`test_resolution_hardening.py`, `test_resolution_atomicity.py`,
+`test_duplicate_clusters.py`, `test_duplicate_persistence.py`,
+`test_phase4_consistency.py`, `test_whatsapp_hardening.py`,
+`test_notification_lifecycle.py`, `test_authorization_sweep.py`; existing
+`test_auth.py` / `test_schema_gotchas.py` realigned. Suite grew 49 -> 145.
+
+### 2.6 `e9b79b2` frontend: remove dev session bypass, restore real route guards (10 files)
+
+- `lib/api.ts` no longer fabricates `Bearer dev-bypass-token` for Vite preview builds;
+  no session means no protected request (logout + throw).
+- 401 from any authenticated call logs out and redirects to
+  `/login?reason=session-expired` instead of leaving a dead token in place.
+- `ProtectedRoute.tsx` enforces authentication and `allowedRoles` again (worker and
+  authority dashboards were reachable by a citizen).
+- Instant-access demo UI gated behind `import.meta.env.DEV`; `priority_score` removed
+  from incident types; `vite-env.d.ts` typed.
+- First frontend unit tests: `tests/protected-route.test.cjs` (3 tests) compiles the
+  real component via the TypeScript API and stubs only its hooks.
+
+### 2.7 `33cab04` ci: verify backend and frontend on every push
+
+`.github/workflows/ci.yml` - backend job installs `requirements.txt` **and**
+`requirements-dev.txt` (a run that cannot import the app proves nothing) then
+`pytest -q`, `ruff check .`, `vulture ... --min-confidence 60`; frontend job runs
+`npm ci`, `tsc -b`, `knip:ci`, `npm run build`. Scope limit stated in the workflow:
+**no SQL is validated** - a green run is not deployment evidence.
+
+### 2.8 docs commit `43f8ff4`: `remaining.md` rewritten per phase, plus
+`backend/SCHEMA_FIELD_MAP.md` (claimed column -> proving migration) and
+`backend/RESOLUTION_TRANSACTION_CHECKPOINT.md` (intended transaction shape).
 
 ---
 
 ## 3. Git state
 
-- Branch `initial-v1`, 4 commits ahead of base `e271bf3`; HEAD is the docs commit containing this file.
-- **Working tree clean** - nothing modified, nothing untracked, nothing staged.
-- **Unpushed** - all 4 commits exist only on this machine. Push before any further work.
+- Branch `initial-v1`, **8 commits** ahead of base `e271bf3`; HEAD is `43f8ff4` (docs).
+- Upstream `origin/initial-v1` is configured but points **at `e271bf3` itself** - ALL
+  8 commits (audit phase and hardening phase) exist only on this machine. Push before
+  further work; until then the work is one disk failure away from gone.
+- **Working tree clean** except the user's pre-existing untracked `report.md`,
+  deliberately never committed.
 - Critical files that previously had NO git history (`frontend/index.html`,
-  `vite.config.ts`, `tsconfig.json`, `package.json`, `package-lock.json`) are now
-  tracked in `e98e133`. The "one careless command deletes the project" risk is closed.
+  `vite.config.ts`, `tsconfig.json`, `package.json`, `package-lock.json`) are tracked
+  since `e98e133`. `.github/workflows/ci.yml` is tracked since `33cab04`.
 
 ---
 
@@ -115,12 +204,16 @@ Pre-existing uncommitted backend work, committed first to separate the histories
 |---|---|---|
 | Frontend typecheck | `npx tsc -b --force` | exit 0 |
 | Frontend dead-code | `npm run knip` / `knip:ci` | exit 0 / exit 0 |
-| Frontend build | `npm run build` | OK (~28s), purple 0 hits in dist |
-| Backend tests | `python -m pytest -q` | **49 passed** (~1s) |
+| Frontend build | `npm run build` | OK (30.3s, 2821 modules) - chunk-size warning only |
+| Frontend unit tests | `node --test tests/*.test.cjs` | **3 pass / 0 fail**, exit 0 |
+| Backend tests | `python -m pytest -q` | **145 passed** (~6s) |
 | Backend lint | `python -m ruff check .` | 0 findings |
 | Backend dead-code | `vulture app vulture_whitelist.py --min-confidence 60` | 0 findings |
-| Whitespace hygiene | `git diff --check` | clean |
-| Dist purity | scan `dist/assets/index-*.css` for `613AF5` | 0 hits |
+| Authorization sweep | `pytest tests/test_authorization_sweep.py -q` | **12 passed** |
+| Whitespace hygiene | `git diff --check` | clean (pre-existing line-ending warnings only) |
+| Dist purity | scan `dist/assets/index-*.css` for `613AF5` / `938BB6` | 0 hits; `--spacing-4` var present |
+| Secret leak scan | all `backend/.env` values vs `git diff HEAD` | 0 real hits |
+| **SQL / migration validation** | **no command exists** | **NOT DONE - see P0 blocker** |
 
 ---
 
@@ -163,45 +256,87 @@ Note: an interrupted `uv pip install` once left ruff's binary corrupt - a pip
 **G8. Dev/test `.log` files are transient.** `backend/pip*.log`, `frontend/dev.log`
 are run artifacts - gitignored, safe to delete.
 
-**G9. E2E claims are untested.** pytest covers auth/config/db/logging/schema units
-with mocks. The real product loop (report -> AI triage -> routing -> assignment ->
-verified resolution -> tracking) has NOT been exercised against live Supabase/Groq.
-Until then, do not claim the product works end-to-end.
+**G9. E2E claims are untested.** pytest now covers 145 auth/config/db/logging/schema/
+resolution/duplicate/WhatsApp/notification/authorization units, most with mocks. The
+real product loop (report -> AI triage -> routing -> assignment -> verified
+resolution -> tracking) has NOT been re-exercised against live Supabase/Groq/Twilio
+since the hardening changes. Until then, do not claim the product works end-to-end.
+
+**G10. Audit-before-state-change ordering is deliberate.** The non-resolution audit
+row is written BEFORE the incident state change, with compensation on failure, so a
+dropped audit trail can never masquerade as a successful update. Sequential
+PostgREST writes are still not atomic (crash between them) - closing that needs an
+RPC migration like 007. Do not reorder these calls for "simplicity".
+
+**G11. A green CI run proves no SQL.** `.github/workflows/ci.yml` runs pytest/ruff/
+vulture plus the frontend gates only. Migrations 006/007/008 and the
+`finalize_resolution` RPC are validated nowhere automated. Deployment readiness is
+tracked in `remaining.md` (P0 section), not in CI status.
+
+**G12. `node --test tests/` (directory form) misreports on this Windows setup.**
+It reports the directory itself as a failing test even when the files inside pass.
+Use the glob: `node --test tests/*.test.cjs` (verified: 3 pass / 0 fail, exit 0).
+
+**G13. Notification events are best-effort by design.** Receipt, AI-completed,
+AI-failed and duplicate-linked notifications must never break the complaint flow
+that triggers them. Do not "harden" them into blocking failures; the AI-failed
+authority fan-out is intentionally the only stage that targets authorities.
+
+**G14. The demo worker bench is development-only on purpose.** Six mock workers are
+offered by `GET /auth/workers` only when `ENVIRONMENT != production`, and selecting
+one substitutes a real registered worker (production rejects a mock id with 422).
+Before hardening, the bench leaked into production and silently reassigned
+incidents to a different real worker.
 
 ---
 
 ## 6. Todo - prioritized
 
 ### 🔴 Now
-1. **Push `initial-v1`** (4 commits, currently machine-local). Then the branch is
-   recoverable and reviewable.
-2. **Visual smoke test (Phase 2)** - the last unverified frontend gate:
+1. **Push `initial-v1`** - ALL 8 commits are machine-local (`origin/initial-v1` still
+   points at base `e271bf3`). Then the branch is recoverable and reviewable.
+2. **Visual smoke test** - still the only unverified frontend gate:
    `cd frontend; npm run dev`, then walk Landing -> Login/Signup -> dashboards ->
    Report -> Track flow. Confirm navy `bg-primary` (not purple), IBM Plex Sans,
    spacing/cards/shadows unchanged, zero console errors, **no request for `/css/ux4g.css`**
    (check DevTools Network tab and `dev.log`). Screenshots as regression record.
+   Now also check the restored guards: a citizen hitting `/authority` lands on
+   `/unauthorized`, and no session hitting a protected page lands on `/login`.
 
 ### 🟠 Next
-3. **CI workflow** (Phase 13) - every command already proven locally:
-   Frontend `npm ci` -> `knip:ci` -> `tsc -b` -> `build`; Backend
-   `uv pip install -r requirements*.txt` -> `pytest` -> `ruff check .`
-   (vulture optional: `vulture app vulture_whitelist.py --min-confidence 60`).
+3. **Database deployment blockers (P0)** - the hardening is not deployable until
+   migrations 006/007/008 are applied on staging and `finalize_resolution` is proven
+   on real PostgreSQL (prior read-only Supabase check returned 200 but did NOT expose
+   `/rpc/finalize_resolution`). Includes SQL-level verified/rejected/error tests,
+   audit-INSERT-failure rollback, repeat/concurrent finalization, service_role vs
+   anon/authenticated denial, and 008's trigger not disturbing existing UPDATE paths.
+   Full checklist: `remaining.md` P0 section. No psql/Docker on PATH yet.
 4. **Spacing decision record** (G2): keep the bridge (recommended) or migrate —
    either way, write the decision into `DEAD_CODE_REGISTER.md` with evidence.
-5. **Backend migrations audit** (Phase 8): `003/004/005` vs app expectations
-   (`source` accepted-but-dropped param; `ai_category` indexed-in-003-but-never-created).
-6. **E2E product flow** (Phases 9-11) against live Supabase/Groq/Twilio creds,
-   following the per-phase report format from the master prompt.
-7. **Security audit** (Phase 12): confirm `SUPABASE_SERVICE_ROLE_KEY` / `GROQ_API_KEY` /
-   `TWILIO_AUTH_TOKEN` never reach the frontend bundle; RBAC on authority/worker routes.
+5. **E2E product flow** against live Supabase/Groq/Twilio creds, following the
+   per-phase report format from the master prompt. Re-verify every flow the
+   hardening touched (worker status update, authority resolution, WhatsApp ingest,
+   notification fan-out), not just the happy path.
+6. **RBAC/RLS residual audit** - Phase 7 swept every API route (worker ownership,
+   timeline, demo bench, notifications); what remains is the database layer: RLS
+   policies, service_role exposure, and confirmation that no secret reaches the
+   frontend bundle (by construction it cannot - `.env` is backend-only, and the
+   committed diff was scanned against every `.env` value).
 
 ### 🟢 Later
-8. **`ruff format`** as an isolated style commit (53/59 files would change; do not mix
+7. **`ruff format`** as an isolated style commit (53/59 files would change; do not mix
    with logic changes).
-9. **Phase 19 production readiness**: wire `TrustScoringService` into the lifecycle,
-   wire outbound WhatsApp confirmations, replace the dev auth bypass with Supabase Auth,
-   then revisit `frontend/lib/client.ts` + `frontend/lib/supabase/client.ts`.
-10. **Whitelist + KEEP+REGISTER review 2026-12-16**: wire in or delete.
+8. **Frontend bundle split** - the production JS chunk is 1.24 MB (353 KB gzip);
+   Vite warns it exceeds 500 kB. Route-level `import()` for the authority/worker
+   dashboards and recharts/leaflet would cut the initial payload.
+9. **Phase 19 production readiness**: wire `TrustScoringService` into the lifecycle
+   (built + tested, still never invoked). The dev auth bypass is now hard-gated and
+   outbound WhatsApp confirmations are wired (Phase 5), so the remaining work there
+   is `frontend/lib/client.ts` + `frontend/lib/supabase/client.ts`.
+10. **Whitelist + KEEP+REGISTER review 2026-12-16**: wire in or delete. Note two
+    dispositions changed since the register was written:
+    `whatsapp_confirmation_service.py` is now wired (Phase 5), and
+    `get_session_data` returns None for expired sessions instead of raising.
 
 ## 7. Command reference
 
@@ -211,11 +346,13 @@ cd C:\Users\kirti\coding\PROJECTS\jansamadhan-ai\frontend
 npx tsc -b --force          # typecheck  -> exit 0
 npm run knip                # dead code  -> exit 0 (+ benign CSS hint, G4)
 npm run knip:ci             # CI mode    -> exit 0
+node --test tests/*.test.cjs # unit tests -> 3 pass (glob form, see G12)
 npm run build               # production build
 
 # ── Backend gates (use the project venv) ──────────────────────
 cd C:\Users\kirti\coding\PROJECTS\jansamadhan-ai\backend
 .venv\Scripts\python.exe -m pytest -q
+.venv\Scripts\python.exe -m pytest tests/test_authorization_sweep.py -q
 .venv\Scripts\python.exe -m ruff check .
 .venv\Scripts\python.exe -m vulture app vulture_whitelist.py --min-confidence 60
 
@@ -223,11 +360,16 @@ cd C:\Users\kirti\coding\PROJECTS\jansamadhan-ai\backend
 uv pip install -r requirements-dev.txt --python .venv\Scripts\python.exe
 
 # ── Push the branch ────────────────────────────────────────────
-git -C C:\Users\kirti\coding\PROJECTS\jansamadhan-ai push -u origin initial-v1
+git -C C:\Users\kirti\coding\PROJECTS\jansamadhan-ai push origin initial-v1
 ```
 
-*Report generated 2026-09-17 after backend audit completion (`fe9c0ba`). Maintained by
-the docs commit containing this file. Working tree clean.*
+CI runs the equivalent of every gate above (`.github/workflows/ci.yml`) except the
+SQL/migration validation that has no local command (G11).
+
+*Report generated 2026-09-17 after backend audit completion (`fe9c0ba`); updated
+2026-09-18 after hardening Phases 1-7 (`b1e56d9`, `e9b79b2`, `33cab04`, `43f8ff4`).
+Working tree clean except the user's untracked `report.md`. Deployment readiness is
+tracked in `remaining.md`, not here.*
 
 
 
