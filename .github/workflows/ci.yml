@@ -1,0 +1,74 @@
+name: CI
+
+# Guards the hardening work: authentication, resolution integrity, duplicate
+# cluster persistence, schema consistency, WhatsApp and notifications.
+#
+# SCOPE LIMIT: nothing here validates SQL. Migrations 006/007/008 and the RPCs
+# they define are only proven on a real PostgreSQL/Supabase instance, so a green
+# run is NOT evidence of deployment readiness. See remaining.md.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    name: backend (pytest, ruff, vulture)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      # The application stack is required: a test run that only installs the dev
+      # requirements cannot import the app.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: pytest
+        run: python -m pytest -q
+
+      - name: ruff
+        run: python -m ruff check .
+
+      - name: vulture
+        run: python -m vulture app vulture_whitelist.py --min-confidence 60
+
+  frontend:
+    name: frontend (tsc, knip, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc -b
+
+      - name: Knip
+        run: npm run knip:ci
+
+      - name: Production build
+        run: npm run build
