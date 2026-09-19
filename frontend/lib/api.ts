@@ -5,9 +5,6 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = useAuthStore.getState().token;
   if (!token) {
     useAuthStore.getState().logout();
-    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
     throw new Error('FRONTEND_NO_SESSION: Please sign in.');
   }
 
@@ -22,9 +19,6 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const response = await fetch(url, { ...options, headers });
   if (response.status === 401) {
     useAuthStore.getState().logout();
-    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-      window.location.href = '/login?reason=session-expired';
-    }
   }
   return response;
 }

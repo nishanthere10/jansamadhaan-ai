@@ -10,6 +10,7 @@ from app.core.database import get_supabase
 from app.core.security import get_current_user
 from app.schemas.incident import (
     IncidentCreateRequest,
+    IncidentFeedbackRequest,
     IncidentStatusUpdate,
     IncidentTriageUpdate,
 )
@@ -92,21 +93,23 @@ def list_incidents(user: dict = Depends(get_current_user)):
         incidents = res.data or []
 
         if incidents:
-            # Extract unique citizen IDs
+            # Extract unique citizen and worker IDs for a single batched user lookup
             citizen_ids = list({inc["citizen_id"] for inc in incidents if inc.get("citizen_id")})
+            worker_ids = list({inc["assigned_to"] for inc in incidents if inc.get("assigned_to")})
+            all_user_ids = list(set(citizen_ids + worker_ids))
+
             users_map = {}
-            if citizen_ids:
-                users_res = db.table("users").select("*").in_("id", citizen_ids).execute()
+            if all_user_ids:
+                users_res = db.table("users").select("id, full_name, email, phone, role, department").in_("id", all_user_ids).execute()
                 for u in (users_res.data or []):
                     users_map[u["id"]] = u
 
-            # Map the citizen info into each incident
+            # Map the citizen and worker info into each incident
             for inc in incidents:
                 c_id = inc.get("citizen_id")
-                if c_id and c_id in users_map:
-                    inc["citizen"] = users_map[c_id]
-                else:
-                    inc["citizen"] = None
+                inc["citizen"] = users_map.get(c_id) if c_id else None
+                w_id = inc.get("assigned_to")
+                inc["worker"] = users_map.get(w_id) if w_id else None
 
         return {
             "success": True,
@@ -119,6 +122,38 @@ def list_incidents(user: dict = Depends(get_current_user)):
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch incidents: {str(e)}",
         ) from e
+
+
+# ── Reverse Geocode Proxy (OSM Policy Compliant) ──────────────────────────────
+
+@router.get("/reverse-geocode")
+def reverse_geocode(lat: float, lon: float):
+    """
+    Reverse-geocode (latitude, longitude) into an address.
+    Proxies to OpenStreetMap Nominatim with an explicit User-Agent to comply with OSM Acceptable Use Policy.
+    """
+    if lat < -90 or lat > 90 or lon < -180 or lon > 180:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Coordinates out of valid range.")
+
+    try:
+        import requests
+        headers = {
+            "User-Agent": "JanSamadhan-AI/1.0 (Civic Grievance System; contact: info@jansamadhan.gov.in)"
+        }
+        resp = requests.get(
+            f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}",
+            headers=headers,
+            timeout=4.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            display_name = data.get("display_name")
+            if display_name:
+                return {"success": True, "address": display_name, "data": data}
+        return {"success": True, "address": f"Lat: {lat:.4f}, Long: {lon:.4f}", "data": None}
+    except Exception as e:
+        logger.warning(f"Reverse geocode lookup failed for ({lat}, {lon}): {e}")
+        return {"success": True, "address": f"Lat: {lat:.4f}, Long: {lon:.4f}", "data": None}
 
 
 # â”€â”€ Get Single Incident â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -239,6 +274,26 @@ def upload_image(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to read file: {str(e)}",
         ) from e
+
+    # Validate magic byte signatures to prevent MIME-spoofing attacks
+    def _matches_magic_bytes(mime: str, data: bytes) -> bool:
+        if len(data) < 12:
+            return False
+        if mime == "image/jpeg":
+            return data.startswith(b"\xff\xd8\xff")
+        if mime == "image/png":
+            return data.startswith(b"\x89PNG\r\n\x1a\n")
+        if mime == "image/gif":
+            return data.startswith(b"GIF87a") or data.startswith(b"GIF89a")
+        if mime == "image/webp":
+            return data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+        return False
+
+    if not _matches_magic_bytes(file.content_type, file_bytes):
+        raise HTTPException(
+            status_code=http_status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"File signature mismatch: contents do not match declared MIME type '{file.content_type}'.",
+        )
 
     ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}[file.content_type]
     file_name = f"{uuid.uuid4()}.{ext}"
@@ -580,4 +635,109 @@ def reprocess_incident_ai(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to re-trigger AI: {str(e)}",
+        ) from e
+
+
+# ── Citizen Feedback & Resolution Dispute ────────────────────────────────────
+
+@router.post("/{incident_id}/feedback")
+def submit_incident_feedback(
+    incident_id: str,
+    req: IncidentFeedbackRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Citizen satisfaction rating (1-5) and dispute/reopen for resolved incidents."""
+    db: Client = get_supabase()
+
+    try:
+        inc_res = db.table("incidents").select("*").eq("id", incident_id).execute()
+        if not inc_res.data:
+            raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Incident not found")
+
+        incident = inc_res.data[0]
+
+        # Security check: citizens can only review their own incidents
+        if user["role"] == "citizen" and incident.get("citizen_id") != user["id"]:
+            raise HTTPException(
+                status_code=http_status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to submit feedback for this incident."
+            )
+
+        if incident.get("status") not in ("resolved", "closed"):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Feedback can only be submitted for resolved incidents."
+            )
+
+        if req.is_disputed:
+            new_status = "in-progress"
+            note = f"Citizen disputed resolution (Rating: {req.rating}/5): {req.comment or 'Civic issue still persists.'}"
+
+            # Transition incident back to in-progress
+            db.table("incidents").update({"status": new_status}).eq("id", incident_id).execute()
+
+            # Record in timeline
+            db.table("incident_updates").insert({
+                "incident_id": incident_id,
+                "updated_by": user["id"],
+                "status": new_status,
+                "note": note,
+            }).execute()
+
+            # Notify worker of rework requirement
+            worker_id = incident.get("assigned_to")
+            if worker_id:
+                try:
+                    NotificationService.create_notification(
+                        db,
+                        worker_id,
+                        "Resolution Disputed — Action Required",
+                        f"Citizen disputed the resolution for '{incident.get('title')}'. Status reopened to In Progress."
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Failed to notify worker of dispute: {notify_err}")
+
+            return {
+                "success": True,
+                "message": "Dispute recorded. The incident has been reopened for field rework.",
+                "data": {"status": new_status, "is_disputed": True}
+            }
+
+        else:
+            note = f"Citizen verified resolution (Rating: {req.rating}/5 stars): {req.comment or 'Resolution accepted.'}"
+
+            # Record in timeline
+            db.table("incident_updates").insert({
+                "incident_id": incident_id,
+                "updated_by": user["id"],
+                "status": "resolved",
+                "note": note,
+            }).execute()
+
+            # Notify worker of successful rating
+            worker_id = incident.get("assigned_to")
+            if worker_id:
+                try:
+                    NotificationService.create_notification(
+                        db,
+                        worker_id,
+                        "Citizen Feedback Received",
+                        f"Citizen gave {req.rating}★ rating on '{incident.get('title')}': {req.comment or 'Good job!'}"
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Failed to notify worker of feedback: {notify_err}")
+
+            return {
+                "success": True,
+                "message": "Thank you! Your feedback has been recorded.",
+                "data": {"status": "resolved", "rating": req.rating}
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to process incident feedback")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process feedback: {str(e)}"
         ) from e

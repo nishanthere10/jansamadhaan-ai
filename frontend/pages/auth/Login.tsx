@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStore, DEV_USERS, DEV_TOKENS } from '../../store/useAuthStore';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { AuthNavbar } from '../../components/layout/AuthNavbar';
 import { useTranslation } from '../../lib/useTranslation';
 
@@ -30,23 +30,44 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const setUser = useAuthStore((state) => state.setUser);
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard';
+  const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const currentUser = useAuthStore((state) => state.user);
+  const currentToken = useAuthStore((state) => state.token);
+
+  const locationState = location.state as { from?: { pathname: string }; email?: string; justSignedUp?: boolean } | null;
+  const rawFrom = locationState?.from?.pathname;
+  const target = (!rawFrom || rawFrom === '/login' || rawFrom === '/signup') ? '/dashboard' : rawFrom;
+
+  // Auto-redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isLoggedIn && currentUser && currentToken) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoggedIn, currentUser, currentToken, navigate]);
 
   // Dev-only instant-login panel. Production builds (import.meta.env.DEV === false)
   // never render it and never mint dev tokens.
   const allowDevBypass = import.meta.env.DEV === true && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true';
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(locationState?.email || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('reason') === 'session-expired' ? 'Your session has expired. Please sign in again.' : '';
+  });
+  const [successMessage, setSuccessMessage] = useState(
+    locationState?.justSignedUp ? 'Account created successfully! Please enter your password to sign in.' : ''
+  );
   const [loading, setLoading] = useState(false);
   const { t } = useTranslation();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setLoading(true);
     setError('');
+    setSuccessMessage('');
 
     try {
       const response = await fetch('/api/v1/auth/login', {
@@ -59,7 +80,7 @@ export default function Login() {
 
       if (response.ok && result.success) {
         setUser(result.data.user, result.data.access_token);
-        navigate(from, { replace: true });
+        navigate(target, { replace: true });
         return;
       }
       // Backend rejected the credentials: surface the reason. No silent bypass.
@@ -148,6 +169,20 @@ export default function Login() {
               )}
 
               <AnimatePresence mode="sync">
+                {successMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                    exit={{ opacity: 0, height: 0, scale: 0.95, transition: { duration: 0.2 } }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    className="overflow-hidden mb-6"
+                  >
+                    <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50 text-sm font-medium">
+                      <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <p>{successMessage}</p>
+                    </div>
+                  </motion.div>
+                )}
                 {error && (
                   <motion.div
                     initial={{ opacity: 0, height: 0, scale: 0.95 }}
@@ -241,12 +276,12 @@ export default function Login() {
                 className="text-center text-sm text-slate-500 dark:text-slate-400"
               >
                 {t('auth.newUser')}{' '}
-                <a
-                  href="/signup"
+                <Link
+                  to="/signup"
                   className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline underline-offset-4 transition-all"
                 >
                   {t('auth.createAccount')}
-                </a>
+                </Link>
               </motion.div>
             </CardFooter>
           </Card>

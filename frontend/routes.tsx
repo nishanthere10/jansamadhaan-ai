@@ -1,21 +1,32 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/auth/Login';
-import Signup from './pages/auth/Signup';
-import LandingPage from './pages/public/LandingPage';
+import React, { Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Layout } from './components/layout/Layout';
 import { useAuthStore } from './store/useAuthStore';
-import AuthorityDashboard from './pages/authority/Dashboard';
-import AuthorityQrProjects from './pages/authority/QrProjects';
-import Analytics from './pages/authority/Analytics';
-import SettingsPage from './pages/shared/Settings';
-import IncidentsList from './pages/shared/IncidentsList';
-import CitizenDashboard from './pages/citizen/Dashboard';
-import WorkerDashboard from './pages/worker/Dashboard';
-import ReportIncident from './pages/citizen/ReportIncident';
-import QrTracker from './pages/public/QrTracker';
+import { LoadingSpinner } from './components/shared/LoadingSpinner';
 import type { UserRole } from './types';
+
+// ─── Code-Split Dynamic Imports (slashes initial bundle) ──
+const Login = React.lazy(() => import('./pages/auth/Login'));
+const Signup = React.lazy(() => import('./pages/auth/Signup'));
+const LandingPage = React.lazy(() => import('./pages/public/LandingPage'));
+const AuthorityDashboard = React.lazy(() => import('./pages/authority/Dashboard'));
+const AuthorityQrProjects = React.lazy(() => import('./pages/authority/QrProjects'));
+const Analytics = React.lazy(() => import('./pages/authority/Analytics'));
+const SettingsPage = React.lazy(() => import('./pages/shared/Settings'));
+const IncidentsList = React.lazy(() => import('./pages/shared/IncidentsList'));
+const CitizenDashboard = React.lazy(() => import('./pages/citizen/Dashboard'));
+const WorkerDashboard = React.lazy(() => import('./pages/worker/Dashboard'));
+const ReportIncident = React.lazy(() => import('./pages/citizen/ReportIncident'));
+const QrTracker = React.lazy(() => import('./pages/public/QrTracker'));
+
+// ─── Page Loading Fallback ────────────────────────────────
+const PageLoader = () => (
+  <div className="min-h-[50vh] flex flex-col items-center justify-center p-8">
+    <LoadingSpinner size="lg" />
+    <span className="text-xs text-slate-400 mt-3 font-medium animate-pulse">Loading module...</span>
+  </div>
+);
 
 // ─── Role-based Dashboard Router ─────────────────────────
 const RoleBasedHome = () => {
@@ -38,9 +49,9 @@ const UnauthorizedPage = () => (
     <p className="cr-page-subtitle max-w-sm">
       You do not have permission to view this page. Please contact your administrator.
     </p>
-    <a href="/" className="cr-btn cr-btn-primary">
+    <Link to="/" className="cr-btn cr-btn-primary">
       ← Return Home
-    </a>
+    </Link>
   </div>
 );
 
@@ -57,9 +68,9 @@ const NotFoundPage = () => (
     <p className="cr-page-subtitle max-w-sm">
       The page you're looking for doesn't exist or may have been moved.
     </p>
-    <a href="/" className="cr-btn cr-btn-primary">
+    <Link to="/" className="cr-btn cr-btn-primary">
       ← Return Home
-    </a>
+    </Link>
   </div>
 );
 
@@ -80,72 +91,104 @@ const RoleRoute = ({
 export const AppRoutes = () => {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public landing page */}
-        <Route path="/" element={<LandingPage />} />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* Public landing page */}
+          <Route path="/" element={<LandingPage />} />
 
-        {/* Public auth routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+          {/* Public auth routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
-        {/* Public QR tracker — no auth needed */}
-        <Route path="/track/:id" element={<QrTracker />} />
+          {/* Public QR tracker — no auth needed */}
+          <Route path="/track/:id" element={<QrTracker />} />
 
-        {/* Error pages */}
-        <Route path="/unauthorized" element={<UnauthorizedPage />} />
+          {/* Error pages */}
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-        {/* Authenticated app shell */}
-        <Route
-          path="/*"
-          element={
-            <ProtectedRoute>
-              <Layout>
-                <Routes>
-                  {/* Dashboard — role-based */}
-                  <Route path="/dashboard" element={<RoleBasedHome />} />
-                  
-                  {/* Direct portal routes for easy URL navigation */}
-                  <Route path="/authority" element={<AuthorityDashboard />} />
-                  <Route path="/citizen" element={<CitizenDashboard />} />
-                  <Route path="/worker" element={<WorkerDashboard />} />
+          {/* Authenticated app shell */}
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Suspense fallback={<PageLoader />}>
+                    <Routes>
+                      {/* Dashboard — role-based */}
+                      <Route path="/dashboard" element={<RoleBasedHome />} />
 
-                  {/* Shared routes */}
-                  <Route path="/incidents" element={<IncidentsList />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                      {/* Direct portal routes guarded by role */}
+                      <Route
+                        path="/authority"
+                        element={
+                          <RoleRoute roles={['authority']}>
+                            <AuthorityDashboard />
+                          </RoleRoute>
+                        }
+                      />
+                      <Route
+                        path="/citizen"
+                        element={
+                          <RoleRoute roles={['citizen']}>
+                            <CitizenDashboard />
+                          </RoleRoute>
+                        }
+                      />
+                      <Route
+                        path="/worker"
+                        element={
+                          <RoleRoute roles={['worker']}>
+                            <WorkerDashboard />
+                          </RoleRoute>
+                        }
+                      />
 
-                  {/* Incident reporting routes */}
-                  <Route
-                    path="/citizen/report"
-                    element={
-                      <RoleRoute roles={['citizen']}>
-                        <ReportIncident />
-                      </RoleRoute>
-                    }
-                  />
-                  <Route path="/report" element={<ReportIncident />} />
+                      {/* Shared routes */}
+                      <Route path="/incidents" element={<IncidentsList />} />
+                      <Route
+                        path="/analytics"
+                        element={
+                          <RoleRoute roles={['authority']}>
+                            <Analytics />
+                          </RoleRoute>
+                        }
+                      />
+                      <Route path="/settings" element={<SettingsPage />} />
 
-                  {/* Authority only */}
-                  <Route
-                    path="/qr-projects"
-                    element={
-                      <RoleRoute roles={['authority']}>
-                        <AuthorityQrProjects />
-                      </RoleRoute>
-                    }
-                  />
+                      {/* Incident reporting routes */}
+                      <Route
+                        path="/citizen/report"
+                        element={
+                          <RoleRoute roles={['citizen']}>
+                            <ReportIncident />
+                          </RoleRoute>
+                        }
+                      />
+                      <Route path="/report" element={<ReportIncident />} />
 
-                  {/* Redirect /dashboard-fallback for old / path */}
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      {/* Authority only */}
+                      <Route
+                        path="/qr-projects"
+                        element={
+                          <RoleRoute roles={['authority']}>
+                            <AuthorityQrProjects />
+                          </RoleRoute>
+                        }
+                      />
 
-                  {/* Fallback inside layout → 404 */}
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </Layout>
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+                      {/* Redirect /dashboard-fallback for old / path */}
+                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+                      {/* Fallback inside layout → 404 */}
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                  </Suspense>
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 };

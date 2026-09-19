@@ -234,3 +234,46 @@ class TestAadharMockGate:
         finally:
             security._DEV_SESSIONS.pop(restored["access_token"], None)
 
+
+def test_security_headers_present_on_responses(client):
+    """Verify security headers are injected into HTTP responses."""
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+    assert resp.headers.get("X-Frame-Options") == "DENY"
+    assert resp.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
+
+
+def test_rate_limiter_blocks_excessive_requests(client):
+    """Verify rate limiter returns 429 when max threshold is exceeded."""
+    # Using X-Test-Rate-Limit header activates rate limiting in test mode
+    headers = {"X-Test-Rate-Limit": "1"}
+    # Limit for /api/v1/auth/signup is 5 requests/min
+    for _ in range(5):
+        client.post("/api/v1/auth/signup", json={"email": "bad"}, headers=headers)
+
+    # 6th request must be throttled with 429
+    blocked = client.post("/api/v1/auth/signup", json={"email": "bad"}, headers=headers)
+    assert blocked.status_code == 429
+    assert "detail" in blocked.json()
+    assert "Retry-After" in blocked.headers
+
+
+def test_upload_image_rejects_spoofed_magic_bytes(client, mock_supabase):
+    """Verify upload_image rejects files where file bytes do not match MIME type."""
+    from app.core.security import get_current_user
+    from app.main import app
+
+    app.dependency_overrides[get_current_user] = lambda: {"id": "user-1", "role": "citizen"}
+    try:
+        # Spoofed text content disguised as image/png
+        fake_png = b"THIS IS NOT A VALID PNG FILE HEADER AT ALL"
+        resp = client.post(
+            "/api/v1/incidents/upload",
+            files={"file": ("malicious.png", fake_png, "image/png")}
+        )
+        assert resp.status_code == 415
+        assert "File signature mismatch" in resp.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+

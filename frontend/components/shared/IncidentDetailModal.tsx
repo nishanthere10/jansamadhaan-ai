@@ -2,55 +2,101 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { fetchWithAuth } from '../../lib/api';
 import { LoadingSpinner } from './LoadingSpinner';
-import { Activity, Clock, Image as ImageIcon, CheckCircle2, ShieldAlert, Zap } from 'lucide-react';
+import { Activity, Clock, Image as ImageIcon, CheckCircle2, Zap, Star, AlertTriangle, MessageSquare, ShieldAlert } from 'lucide-react';
 import type { IncidentUpdate, Incident } from '../../types';
 import { StatusBadge } from './StatusBadge';
 import { Badge } from '../ui/badge';
+import { useAuthStore } from '../../store/useAuthStore';
+import { toast } from 'sonner';
 
 interface DetailModalProps {
   incidentId: string | null;
   onClose: () => void;
   title?: string;
+  onStatusChange?: () => void;
 }
 
-export function IncidentDetailModal({ incidentId, onClose, title }: DetailModalProps) {
+export function IncidentDetailModal({ incidentId, onClose, title, onStatusChange }: DetailModalProps) {
+  const user = useAuthStore((s) => s.user);
   const [updates, setUpdates] = useState<IncidentUpdate[]>([]);
   const [incident, setIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'timeline' | 'ai'>('timeline');
+
+  // Feedback & dispute state
+  const [rating, setRating] = useState(5);
+  const [feedbackComment, setFeedbackComment] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   useEffect(() => {
     if (!incidentId) return;
     
     let isMounted = true;
     setLoading(true);
+    setUpdates([]);
+    setIncident(null);
+    setFeedbackSubmitted(false);
+    setFeedbackComment('');
+    setRating(5);
 
-    const loadData = async () => {
-      try {
+    Promise.all([
+      fetchWithAuth(`/api/v1/incidents/${incidentId}/updates`),
+      fetchWithAuth(`/api/v1/incidents/${incidentId}`),
+    ])
+      .then(async ([updatesRes, incidentRes]) => {
+        if (!isMounted) return;
+        const updatesJson = await updatesRes.json();
+        const incidentJson = await incidentRes.json();
+        if (updatesJson.success) setUpdates(updatesJson.data);
+        if (incidentJson.success) setIncident(incidentJson.data);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        console.error('Failed to load incident details', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [incidentId]);
+
+  const handleSubmitFeedback = async (isDisputed: boolean) => {
+    if (!incidentId) return;
+    setSubmittingFeedback(true);
+    try {
+      const res = await fetchWithAuth(`/api/v1/incidents/${incidentId}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rating,
+          comment: feedbackComment,
+          is_disputed: isDisputed,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success(json.message);
+        setFeedbackSubmitted(true);
+        onStatusChange?.();
+        // Refresh timeline and incident state
         const [updatesRes, incidentRes] = await Promise.all([
           fetchWithAuth(`/api/v1/incidents/${incidentId}/updates`),
           fetchWithAuth(`/api/v1/incidents/${incidentId}`),
         ]);
         const updatesJson = await updatesRes.json();
         const incidentJson = await incidentRes.json();
-        
-        if (isMounted) {
-          if (updatesJson.success) setUpdates(updatesJson.data);
-          if (incidentJson.success) {
-            setIncident(incidentJson.data);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load detail data:", err);
-      } finally {
-        if (isMounted) setLoading(false);
+        if (updatesJson.success) setUpdates(updatesJson.data);
+        if (incidentJson.success) setIncident(incidentJson.data);
+      } else {
+        toast.error(json.detail || 'Failed to submit feedback');
       }
-    };
-
-    loadData();
-
-    return () => { isMounted = false; };
-  }, [incidentId]);
+    } catch {
+      toast.error('Connection error. Please try again.');
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   return (
     <Dialog open={!!incidentId} onOpenChange={(open) => !open && onClose()}>
@@ -83,6 +129,63 @@ export function IncidentDetailModal({ incidentId, onClose, title }: DetailModalP
               <p className="text-sm mt-3 font-medium">Fetching history...</p>
             </div>
           ) : activeTab === 'timeline' ? (
+            <>
+              {/* Citizen Resolution Feedback Card */}
+              {incident?.status === 'resolved' && user?.role === 'citizen' && !feedbackSubmitted && (
+                <div className="mb-6 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1.5 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
+                    <CheckCircle2 size={16} /> Action Required: Verify & Rate Resolution
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+                    The field worker has marked this grievance as resolved. Please rate the quality of work or dispute if the issue persists.
+                  </p>
+
+                  {/* Star selector */}
+                  <div className="flex items-center gap-1 mb-3">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRating(star)}
+                        className="p-1 text-amber-400 hover:scale-110 transition-transform cursor-pointer"
+                      >
+                        <Star
+                          size={20}
+                          className={star <= rating ? "fill-amber-400 text-amber-400" : "text-slate-300 dark:text-slate-600"}
+                        />
+                      </button>
+                    ))}
+                    <span className="text-xs font-semibold ml-2 text-slate-600 dark:text-slate-300">{rating} / 5 Stars</span>
+                  </div>
+
+                  <textarea
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    placeholder="Optional notes or explanation why the issue persists..."
+                    className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 mb-3 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    rows={2}
+                  />
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                    <button
+                      type="button"
+                      disabled={submittingFeedback}
+                      onClick={() => handleSubmitFeedback(false)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      <CheckCircle2 size={14} /> Accept & Confirm Resolution
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submittingFeedback}
+                      onClick={() => handleSubmitFeedback(true)}
+                      className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-950/30 dark:hover:bg-red-900/40 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      <AlertTriangle size={14} /> Dispute (Reopen Issue)
+                    </button>
+                  </div>
+                </div>
+              )}
              updates.length === 0 ? (
                <div className="text-center py-10 text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-800">
                  <Clock size={32} className="mx-auto text-slate-300 mb-3" />
@@ -134,7 +237,7 @@ export function IncidentDetailModal({ incidentId, onClose, title }: DetailModalP
                   </div>
                 ))}
               </div>
-            )
+            </>
           ) : activeTab === 'ai' && (incident?.ai_structured_data || incident?.ai_category || incident?.ai_vision_analysis || incident?.ai_severity) ? (
               <div className="space-y-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
                 <div>

@@ -20,7 +20,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import ai, auth, incident, notifications, qr_projects
-from app.core.middleware import RequestLoggingMiddleware
+from app.core.middleware import (
+    RateLimitMiddleware,
+    RequestLoggingMiddleware,
+    SecurityHeadersMiddleware,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,8 @@ app = FastAPI(
 
 # ── Middleware (order matters: outer-most first) ───────────────────────────────
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 allowed_origins = os.getenv(
     "ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"

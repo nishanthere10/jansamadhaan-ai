@@ -1,6 +1,6 @@
 # Current Codebase Report - Jan Samadhan AI
 
-**Date:** 2026-09-18 (post hardening, Phases 1-7) - **Branch:** `initial-v1` - **base:** `e271bf3`
+**Date:** 2026-09-20 (post hardening & UI/AI upgrades) - **Branch:** `initial-v1` - **base:** `e271bf3`
 **Commit chain:** `796bc1f` backend infra -> `e98e133` frontend cleanup -> `fe9c0ba` backend audit ->
 docs `279d3e4` -> `b1e56d9` backend hardening -> `e9b79b2` frontend hardening -> `33cab04` CI -> `43f8ff4` docs
 **Working tree:** CLEAN except the user's untracked pre-existing `report.md` (deliberately not committed).
@@ -27,6 +27,8 @@ docs `279d3e4` -> `b1e56d9` backend hardening -> `e9b79b2` frontend hardening ->
 | **Phase 7 authorization sweep** (worker BOLA + timeline leak closed, demo bench dev-only) | DONE (`b1e56d9`), tested - 12/12 pass |
 | Backend gates: pytest 145/145 - ruff 0 - vulture 0 | DONE (was 49/49 before hardening) |
 | Frontend hardening (no fabricated token, 401 -> logout redirect, role guards restored) | DONE (`e9b79b2`), 3/3 unit tests pass |
+| **Authority UI/UX Overhaul** (SLA Engine, GIS Map, Triage Workspace, Mobile Responsiveness) | DONE (Working tree) |
+| **AI Vision Migration** (Replaced decommissioned Groq model with Gemini Flash API) | DONE (Working tree) |
 | **CI workflow** (`.github/workflows/ci.yml`) | DONE (`33cab04`) - runs backend + frontend gates |
 | `DEAD_CODE_REGISTER.md` | DONE - frontend + backend sections final, review dates set |
 | Working tree protection (Phase 1) | DONE - everything committed |
@@ -181,6 +183,20 @@ URLs); the 6-worker demo bench is development-only and mock ids are rejected wit
 ### 2.8 docs commit `43f8ff4`: `remaining.md` rewritten per phase, plus
 `backend/SCHEMA_FIELD_MAP.md` (claimed column -> proving migration) and
 `backend/RESOLUTION_TRANSACTION_CHECKPOINT.md` (intended transaction shape).
+
+### 2.9 Uncommitted Updates: Authority UI/UX & AI Vision (Sept 19-20)
+
+**Authority UI/UX Overhaul & Responsiveness:**
+- **SLA Engine:** Created `frontend/lib/sla.ts` with fuzzy category matching and MoHUA-based SLA targets.
+- **Triage Workspace:** Built `SplitTriageWorkspace.tsx` featuring 1-click Fast-Track dispatch and multi-action ATR templates (Note, In-Progress, Resolve) with fixed mobile queue height.
+- **GIS Integration:** Built `TerritoryMapView.tsx` with dynamic map recentering, SLA-coded pins, and responsive height logic.
+- **Filters & Export:** Updated `DashboardFilters.tsx` and `useDashboardState.ts` for SLA quick tabs, status normalization, and CSV export with safe date formatting. 
+- Responsiveness verified across mobile and desktop breakpoints for all Dashboard components.
+
+**AI Vision Migration (Google Gemini Flash):**
+- Decommissioned the deprecated Groq Llama 3.2 Vision model, resolving 400 API errors.
+- Created `app/services/gemini_vision_service.py` to handle Google GenAI interactions using the free tier (`gemini-2.5-flash`), featuring retry logic, payload size guards, and automatic MIME-type detection.
+- Refactored `VisionAnalysisService` (`app/ai/services/vision_service.py`) to seamlessly delegate to the new Gemini module while maintaining strict JSON structured outputs for the LangGraph pipeline.
 
 ---
 
@@ -367,8 +383,8 @@ CI runs the equivalent of every gate above (`.github/workflows/ci.yml`) except t
 SQL/migration validation that has no local command (G11).
 
 *Report generated 2026-09-17 after backend audit completion (`fe9c0ba`); updated
-2026-09-18 after hardening Phases 1-7 (`b1e56d9`, `e9b79b2`, `33cab04`, `43f8ff4`).
-Working tree clean except the user's untracked `report.md`. Deployment readiness is
+2026-09-18 after hardening Phases 1-7 (`b1e56d9`, `e9b79b2`, `33cab04`, `43f8ff4`); updated 2026-09-20 with Authority UI/UX upgrades and Gemini Vision migration.
+Working tree has uncommitted changes for UI and Vision API. Deployment readiness is
 tracked in `remaining.md`, not here.*
 
 

@@ -5,15 +5,15 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from app.ai.models.graph_state import ComplaintGraphState
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class SeverityScoringService:
     def __init__(self):
-        # llama3-8b is sufficient for quick severity scoring
         self.llm = ChatGroq(
             api_key=os.environ.get("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant", 
+            model_name=settings.GROQ_MODEL,
             temperature=0.1
         )
         from app.ai.models.ai_response_models import SeverityResponse

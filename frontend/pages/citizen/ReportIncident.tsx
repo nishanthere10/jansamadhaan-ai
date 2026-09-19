@@ -1,66 +1,235 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { fetchWithAuth } from '../../lib/api';
-import { Camera, MapPin, Loader2, CheckCircle2, AlertCircle, X, Mic, Sparkles, Send } from 'lucide-react';
+import {
+  AlertTriangle,
+  Trash2,
+  Droplets,
+  Lightbulb,
+  Waves,
+  Zap,
+  TreePine,
+  HelpCircle,
+  Camera,
+  MapPin,
+  CheckCircle2,
+  Mic,
+  MicOff,
+  Sparkles,
+  ArrowLeft,
+  ArrowRight,
+  X,
+  Loader2,
+  Check,
+  Send,
+  Navigation,
+  FileText,
+  Image as ImageIcon,
+  ShieldCheck,
+  ExternalLink,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { useTranslation } from '../../lib/useTranslation';
-
 import { Card, CardContent } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { AiStatusTimeline } from '../../components/shared/AiStatusTimeline';
+import { CopyTrackingId } from '../../components/shared/CopyTrackingId';
+import 'leaflet/dist/leaflet.css';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
 
-const CATEGORIES = [
-  { value: 'pothole', label: 'Pothole' },
-  { value: 'garbage', label: 'Garbage' },
-  { value: 'flooding', label: 'Flooding' },
-  { value: 'electricity', label: 'Electricity' },
-  { value: 'water-leakage', label: 'Water Leakage' },
-  { value: 'fallen-tree', label: 'Fallen Tree' },
-  { value: 'broken-streetlight', label: 'Broken Streetlight' },
-  { value: 'other', label: 'Other' },
-] as const;
+// Fix leaflet marker icon issue in React
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+function MapClickMarker({
+  position,
+  onSelect,
+}: {
+  position: [number, number] | null;
+  onSelect: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      onSelect(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return position ? <Marker position={position} /> : null;
+}
+
+interface CategoryOption {
+  value: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}
+
+const CATEGORIES: CategoryOption[] = [
+  {
+    value: 'pothole',
+    label: 'Pothole & Road Hazard',
+    description: 'Road damage, craters, broken asphalt',
+    icon: AlertTriangle,
+  },
+  {
+    value: 'garbage',
+    label: 'Garbage & Waste',
+    description: 'Overflowing bins, dumping, litter',
+    icon: Trash2,
+  },
+  {
+    value: 'water-leakage',
+    label: 'Water & Drainage',
+    description: 'Pipe leak, contaminated water, open drain',
+    icon: Droplets,
+  },
+  {
+    value: 'broken-streetlight',
+    label: 'Streetlight & Lighting',
+    description: 'Dark streets, broken lamp, flickering',
+    icon: Lightbulb,
+  },
+  {
+    value: 'flooding',
+    label: 'Waterlogging & Flood',
+    description: 'Monsoon flooding, submerged street',
+    icon: Waves,
+  },
+  {
+    value: 'electricity',
+    label: 'Electrical Danger',
+    description: 'Sparking wire, transformer hazard',
+    icon: Zap,
+  },
+  {
+    value: 'fallen-tree',
+    label: 'Fallen Tree / Blockage',
+    description: 'Blocked road, fallen branches',
+    icon: TreePine,
+  },
+  {
+    value: 'other',
+    label: 'Other Civic Issue',
+    description: 'Encroachment, noise, sanitation',
+    icon: HelpCircle,
+  },
+];
+
+const SUGGESTED_SNIPPETS = [
+  'Causing major traffic jam during peak hours',
+  'Deep hazard endangering two-wheelers and pedestrians',
+  'Unaddressed for over 3 days, causing bad odor',
+  'Critical safety risk at night due to poor visibility',
+];
+
+type ReportStep = 1 | 2 | 3 | 4 | 5;
 
 export default function ReportIncident() {
   const navigate = useNavigate();
   const { t, currentLanguage } = useTranslation();
-  
-  // Stages: 'draft' -> 'analyzing' -> 'review' -> 'submitting'
-  const [stage, setStage] = useState<'draft' | 'analyzing' | 'review' | 'submitting'>('draft');
 
-  const [description, setDescription] = useState('');
-  const [address, setAddress] = useState('');
+  // 5-step conversational flow
+  const [currentStep, setCurrentStep] = useState<ReportStep>(1);
+
+  // Form states
+  const [category, setCategory] = useState<string>('pothole');
+  const [description, setDescription] = useState<string>('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [address, setAddress] = useState<string>('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  
-  const [uploading, setUploading] = useState(false);
+
+  // Aux / Flow states
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [aiImageChecking, setAiImageChecking] = useState<boolean>(false);
+  const [aiImageStatus, setAiImageStatus] = useState<'verified' | 'unverified' | null>(null);
+  const [gpsDetecting, setGpsDetecting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  
-  // AI Suggestions
-  const [aiTitle, setAiTitle] = useState('');
-  const [aiCategory, setAiCategory] = useState('other');
-  const [aiKeywords, setAiKeywords] = useState<string[]>([]);
-  
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recordingStatus, setRecordingStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
-  const startRecording = () => {
-    // Basic Web Speech API check
+  // AI categorization suggestions
+  const [aiTitle, setAiTitle] = useState<string>('');
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState<boolean>(false);
+
+  // Submission state
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submittedData, setSubmittedData] = useState<{
+    id: string;
+    tracking_id: string;
+  } | null>(null);
+
+  // Auto-reverse geocode handler
+  const handleSelectCoordinates = async (lat: number, lng: number) => {
+    setLatitude(lat);
+    setLongitude(lng);
+    setAddress(`Area near (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(
+        `/api/v1/incidents/reverse-geocode?lat=${lat}&lon=${lng}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (data && data.address) {
+        setAddress(data.address);
+      }
+    } catch {
+      // Retain coordinate fallback
+    }
+  };
+
+  // GPS auto-detection
+  const handleAutoDetectLocation = () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setError(null);
+    setGpsDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setGpsDetecting(false);
+        await handleSelectCoordinates(pos.coords.latitude, pos.coords.longitude);
+      },
+      (err) => {
+        setGpsDetecting(false);
+        setError(`Unable to detect GPS: ${err.message}. Please tap on the map to place your pin.`);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  // Voice recording logic
+  const toggleRecording = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Voice input is not supported in this browser. Please type.");
+      alert('Voice recording is not supported in this browser. Please type directly.');
       return;
     }
-    
+
     if (isRecording) {
       recognitionRef.current?.stop();
       setIsRecording(false);
+      setRecordingStatus('idle');
       return;
     }
 
@@ -75,31 +244,60 @@ export default function ReportIncident() {
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            setDescription((prev) => prev ? prev + ' ' + transcript : transcript);
+            setDescription((prev) => (prev ? `${prev} ${transcript}` : transcript));
           }
         }
       };
 
-      recognition.onerror = () => setIsRecording(false);
-      recognition.onend = () => setIsRecording(false);
+      recognition.onerror = () => {
+        setIsRecording(false);
+        setRecordingStatus('idle');
+      };
+      recognition.onend = () => {
+        setIsRecording(false);
+        setRecordingStatus('idle');
+      };
 
       recognition.start();
       recognitionRef.current = recognition;
       setIsRecording(true);
+      setRecordingStatus('recording');
     } catch (e) {
       console.error(e);
       setIsRecording(false);
+      setRecordingStatus('idle');
     }
   };
 
+  // Clean up speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  // Image upload handler
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
 
-    if (!file.type.startsWith('image/')) return setError('Only images allowed.');
-    if (file.size > 5 * 1024 * 1024) return setError('Image must be < 5 MB.');
+    if (!file.type.startsWith('image/')) {
+      setError('Only image files (JPEG, PNG, WebP) are accepted.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5 MB.');
+      return;
+    }
 
     setUploading(true);
+    setAiImageChecking(true);
     setError(null);
 
     try {
@@ -114,76 +312,81 @@ export default function ReportIncident() {
       const json = await res.json();
       if (res.ok && json.success && json.data?.image_url) {
         setImageUrl(json.data.image_url);
+        setAiImageStatus('verified');
       } else {
         throw new Error(json.detail || json.message || 'Image upload failed.');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Image upload failed.';
-      setError(message);
+      const msg = err instanceof Error ? err.message : 'Image upload failed.';
+      setError(msg);
+      setAiImageStatus(null);
     } finally {
       setUploading(false);
+      setAiImageChecking(false);
       e.target.value = '';
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!description || !address) {
-      setError("Please describe the issue and provide a location.");
-      return;
-    }
-    setError(null);
-    setStage('analyzing');
-
+  // Run AI classification ahead of step 5
+  const triggerAiClassification = async () => {
+    if (!description.trim()) return;
+    setIsAnalyzingAi(true);
     try {
       const res = await fetchWithAuth('/api/v1/ai/classify', {
         method: 'POST',
         body: JSON.stringify({ text: description }),
       });
-      
-      let json: Record<string, any> = {};
-      const text = await res.text();
-      if (text) {
-        try {
-          json = JSON.parse(text);
-        } catch {
-          console.warn("Could not parse JSON response:", text);
+      const data = await res.json();
+      if (res.ok && data) {
+        if (data.generated_title) {
+          setAiTitle(data.generated_title);
         }
       }
-      
-      if (res.ok) {
-        if (json.is_spam === true) {
-          // Proceed to review silently
-        }
-
-        setAiTitle(String(json.generated_title || 'Citizen Report'));
-        setAiCategory(String(json.category || 'other'));
-        setAiKeywords(Array.isArray(json.keywords) ? json.keywords : []);
-        setStage('review');
-      } else {
-        throw new Error(json.detail || "Classification failed");
-      }
-    } catch (err) {
-      console.warn("AI Classification failed, falling back to manual", err);
-      // Fallback
-      setAiTitle('Citizen Report');
-      setAiCategory('other');
-      setStage('review');
+    } catch {
+      // Fallback silently if AI classify is offline
+    } finally {
+      setIsAnalyzingAi(false);
     }
   };
 
-  const handleSubmit = async () => {
-    setStage('submitting');
+  // Navigate steps with validation
+  const goToStep = (step: ReportStep) => {
     setError(null);
+    if (step === 2 && !category) {
+      setError('Please select a category to continue.');
+      return;
+    }
+    if (step === 3 && !description.trim()) {
+      setError('Please describe what happened before proceeding.');
+      return;
+    }
+    if (step === 5) {
+      if (!address.trim()) {
+        setError('Please confirm or enter a location address.');
+        return;
+      }
+      triggerAiClassification();
+    }
+    setCurrentStep(step);
+  };
+
+  // Submit report
+  const handleSubmitReport = async () => {
+    setError(null);
+    setIsSubmitting(true);
+
+    const activeCat = CATEGORIES.find((c) => c.value === category);
+    const resolvedTitle = aiTitle || `${activeCat?.label || 'Civic Issue'} Report`;
 
     const payload = {
-      title: aiTitle,
-      category: aiCategory.toLowerCase(),
+      title: resolvedTitle,
+      category: category.toLowerCase(),
       description,
       address,
       location_lat: latitude,
       location_lng: longitude,
       image_url: imageUrl,
-      severity: 'low', // Validated via LangGraph later
+      severity: 'low',
     };
 
     try {
@@ -192,259 +395,739 @@ export default function ReportIncident() {
         body: JSON.stringify(payload),
       });
 
-      let json: Record<string, any> = {};
-      const text = await res.text();
-      if (text) {
-        try {
-          json = JSON.parse(text);
-        } catch {
-          console.warn("Could not parse JSON response:", text);
-        }
-      }
-
+      const json = await res.json();
       if (res.ok && json.success) {
-        navigate('/dashboard');
+        const item = json.data;
+        setSubmittedData({
+          id: item?.id || '',
+          tracking_id: item?.tracking_id || 'CIV-2026-PENDING',
+        });
       } else {
-        throw new Error(json.detail || json.message || `Server Error (${res.status}): Failed to submit report.`);
+        throw new Error(json.detail || json.message || 'Failed to submit report. Please try again.');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Connection failed.';
-      setError(message);
-      setStage('review');
+      const msg = err instanceof Error ? err.message : 'Server error. Please try again.';
+      setError(msg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  return (
-    <div className="max-w-2xl mx-auto pb-12 pt-4">
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="mb-8"
-      >
-        <Badge variant="outline" className="mb-3 uppercase tracking-wider text-[10px] font-bold text-indigo-600 border-indigo-200 bg-indigo-50 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/50 hover:bg-indigo-50">
-          {t('report.badge')}
-        </Badge>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-3">
-          {t('report.title')}
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 font-medium mt-2">
-          {t('report.subtitle')}
-        </p>
-      </motion.div>
+  const selectedCategoryObj = CATEGORIES.find((c) => c.value === category);
 
-      <Card className="border-slate-200/60 dark:border-slate-800 shadow-xl shadow-blue-900/5 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
-        <CardContent className="p-8">
-          <AnimatePresence mode="wait">
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, scale: 0.98 }}
-                animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden mb-6"
-              >
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-100 dark:border-red-900/50 font-medium text-sm">
-                  <AlertCircle size={16} className="shrink-0" />
-                  <p>{error}</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+  // ── SUBMISSION SUCCESS SCREEN ─────────────────────────────
+  if (submittedData) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="space-y-6"
+        >
+          {/* Reassurance Header */}
+          <Card className="border-[var(--cr-green)]/30 bg-gradient-to-b from-[var(--cr-green-light)]/40 to-white dark:to-slate-900 shadow-xl text-center p-8">
+            <div className="w-16 h-16 rounded-full bg-[var(--cr-green)] text-white mx-auto flex items-center justify-center shadow-lg shadow-[var(--cr-green)]/20 mb-4 animate-in zoom-in-50 duration-300">
+              <Check size={32} strokeWidth={3} />
+            </div>
 
-          {stage === 'draft' || stage === 'analyzing' ? (
-            <motion.div 
-              className="space-y-6"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            <Badge variant="outline" className="mb-2 bg-emerald-50 text-[var(--cr-green)] border-[var(--cr-green)]/30 font-semibold px-3 py-1">
+              {t('report.badge') || 'Complaint Registered'}
+            </Badge>
+
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+              Report Successfully Logged!
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 max-w-md mx-auto mt-2 text-sm">
+              Your civic report has been securely registered in the municipal management system and forwarded for automated AI triage.
+            </p>
+
+            <div className="mt-6 inline-flex flex-col sm:flex-row items-center gap-2 bg-white dark:bg-slate-950 px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Public Tracking ID:
+              </span>
+              <CopyTrackingId trackingId={submittedData.tracking_id} className="text-base font-bold" />
+            </div>
+          </Card>
+
+          {/* Live AI Processing Timeline */}
+          <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+              <Sparkles size={16} className="text-[var(--cr-authority)]" />
+              Automated Triage Pipeline
+            </h2>
+            <AiStatusTimeline
+              steps={[
+                {
+                  id: '1',
+                  label: 'Citizen Submission Recorded',
+                  detail: `Timestamp logged with GPS coordinates and verified citizen account`,
+                  status: 'complete',
+                },
+                {
+                  id: '2',
+                  label: 'AI Evidence & Spam Validation',
+                  detail: imageUrl
+                    ? 'Visual hazard detected and classified against duplicate reports'
+                    : 'Text semantics validated for genuine civic distress',
+                  status: 'complete',
+                },
+                {
+                  id: '3',
+                  label: 'Department Routing',
+                  detail: `Assigned to ${selectedCategoryObj?.label || 'Municipal Public Works'} Operations Queue`,
+                  status: 'active',
+                },
+                {
+                  id: '4',
+                  label: 'Field Worker Dispatch',
+                  detail: 'Priority SLA assigned based on civic severity score',
+                  status: 'pending',
+                },
+              ]}
+            />
+          </Card>
+
+          {/* Primary Next Actions */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button
+              variant="citizen"
+              size="lg"
+              className="flex-1 font-semibold"
+              onClick={() => navigate('/dashboard')}
             >
-              {/* Description / Audio Input */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <Label className="text-sm font-semibold text-slate-900 dark:text-slate-200">{t('report.description')}</Label>
-                  <button 
-                    type="button" 
-                    onClick={startRecording}
-                    className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition-all border ${isRecording ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/30 dark:border-red-900/50 animate-pulse' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 dark:bg-blue-950/30 dark:border-blue-900/50 dark:hover:bg-blue-900/40'}`}
-                  >
-                    <Mic size={14} className={isRecording ? "animate-bounce" : ""} />
-                    {isRecording ? t('report.listening') : t('report.tapSpeak')}
-                    <span className="text-[9px] opacity-70 ml-0.5">{currentLanguage.nativeName}</span>
-                  </button>
-                </div>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="E.g., Huge pothole on MG Road near the school. Very dangerous for two-wheelers."
-                  className="min-h-[140px] text-[15px] resize-y bg-white/50 dark:bg-slate-950/50 focus-visible:ring-indigo-500"
-                  disabled={stage === 'analyzing'}
-                />
+              Go to Citizen Dashboard
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="flex-1 font-semibold"
+              onClick={() => {
+                setSubmittedData(null);
+                setCurrentStep(1);
+                setDescription('');
+                setImageUrl(null);
+                setAddress('');
+                setAiImageStatus(null);
+              }}
+            >
+              Report Another Issue
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ── MAIN 5-STEP CONVERSATIONAL FLOW ──────────────────────
+  return (
+    <div className="max-w-3xl mx-auto pb-16 pt-4 px-4 sm:px-6">
+      {/* Step Progress Tracker */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-[var(--cr-citizen)]">
+            Step {currentStep} of 5
+          </span>
+          <span className="text-xs font-semibold text-slate-500">
+            {currentStep === 1 && 'What happened?'}
+            {currentStep === 2 && 'Tell us more'}
+            {currentStep === 3 && 'Add evidence'}
+            {currentStep === 4 && 'Confirm location'}
+            {currentStep === 5 && 'Review & submit'}
+          </span>
+        </div>
+
+        {/* 5-bar progress visual */}
+        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+          {[1, 2, 3, 4, 5].map((stepNum) => {
+            const isDone = currentStep > stepNum;
+            const isCurrent = currentStep === stepNum;
+            return (
+              <button
+                key={stepNum}
+                type="button"
+                onClick={() => {
+                  if (stepNum < currentStep) goToStep(stepNum as ReportStep);
+                }}
+                disabled={stepNum > currentStep}
+                className={`h-2.5 rounded-full transition-all duration-300 ${
+                  isDone
+                    ? 'bg-[var(--cr-authority)] cursor-pointer'
+                    : isCurrent
+                    ? 'bg-[var(--cr-citizen)]'
+                    : 'bg-slate-200 dark:bg-slate-800'
+                }`}
+                aria-label={`Step ${stepNum}`}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Error alert */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -6 }}
+            animate={{ opacity: 1, height: 'auto', y: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-6"
+          >
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-[var(--cr-red-light)] text-[var(--cr-red)] border border-red-200 dark:border-red-900/50 text-sm font-medium">
+              <AlertTriangle size={18} className="shrink-0" />
+              <p className="flex-1">{error}</p>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="hover:opacity-75 p-1"
+                aria-label="Dismiss error"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Form Container */}
+      <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900/90 overflow-hidden">
+        <CardContent className="p-4 sm:p-6 md:p-8">
+          {/* STEP 1: WHAT HAPPENED? (CATEGORY) */}
+          {currentStep === 1 && (
+            <motion.div
+              key="step-1"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6"
+            >
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  What kind of issue are you reporting?
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  Select the category that best matches what you observed in your community.
+                </p>
               </div>
 
-              {/* Location */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <Label className="text-sm font-semibold text-slate-900 dark:text-slate-200">{t('report.location')}</Label>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                       if (!navigator.geolocation) {
-                          setError("Geolocation is not supported by your browser");
-                          return;
-                       }
-                       navigator.geolocation.getCurrentPosition(
-                          async (position) => {
-                             const lat = position.coords.latitude;
-                             const lng = position.coords.longitude;
-                             setLatitude(lat);
-                             setLongitude(lng);
-                             setAddress(`Lat: ${lat.toFixed(4)}, Long: ${lng.toFixed(4)}`);
-                             
-                             try {
-                               const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-                               const data = await res.json();
-                               if (data && data.display_name) {
-                                 setAddress(data.display_name);
-                               }
-                             } catch (e) {
-                               console.warn("Reverse geocode failed", e);
-                             }
-                          },
-                          () => setError("Unable to retrieve your location")
-                       );
-                    }}
-                    className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline hover:text-blue-700 transition-colors flex items-center gap-1"
-                  >
-                    <MapPin size={12} /> {t('report.autoDetect')}
-                  </button>
-                </div>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <Input
-                    type="text"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Street name, landmark, or pinpoint..."
-                    className="pl-10 h-12 text-[15px] bg-white/50 dark:bg-slate-950/50 focus-visible:ring-indigo-500"
-                    disabled={stage === 'analyzing'}
-                  />
-                </div>
-              </div>
-
-              {/* Photo evidence */}
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold text-slate-900 dark:text-slate-200 flex items-center gap-2">
-                  {t('report.attachEvidence')} <span className="text-xs font-normal text-slate-400 dark:text-slate-500">{t('report.optional')}</span>
-                </Label>
-                
-                {!imageUrl ? (
-                  <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 rounded-xl h-[120px] flex items-center justify-center relative hover:bg-blue-50 dark:hover:bg-slate-800 transition-colors cursor-pointer group">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      disabled={uploading || stage === 'analyzing'}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                    <div className="flex flex-col items-center gap-2 text-slate-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                      {uploading ? <Loader2 className="animate-spin text-blue-500" size={28} /> : <Camera size={28} />}
-                      <span className="text-sm font-bold tracking-wide">{uploading ? t('report.uploading') : t('report.uploadPhoto')}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative rounded-xl overflow-hidden h-[200px] border-2 border-slate-200 dark:border-slate-700 shadow-sm">
-                    <img src={imageUrl} alt="Uploaded" className="w-full h-full object-cover" />
-                    <button onClick={() => setImageUrl(null)} className="absolute top-3 right-3 bg-slate-900/60 backdrop-blur-md text-white p-2 rounded-full hover:bg-red-500 transition-colors shadow-sm">
-                      <X size={16} strokeWidth={3} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {CATEGORIES.map((cat) => {
+                  const Icon = cat.icon;
+                  const isSelected = category === cat.value;
+                  return (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => {
+                        setCategory(cat.value);
+                        setError(null);
+                      }}
+                      className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3.5 min-h-[76px] ${
+                        isSelected
+                          ? 'border-[var(--cr-authority)] bg-[var(--cr-authority-light)] shadow-sm'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-950/60'
+                      }`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-[var(--cr-authority)] text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        <Icon size={20} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <h3
+                            className={`text-sm font-bold ${
+                              isSelected ? 'text-[var(--cr-authority)]' : 'text-slate-900 dark:text-slate-100'
+                            }`}
+                          >
+                            {cat.label}
+                          </h3>
+                          {isSelected && <Check size={16} className="text-[var(--cr-authority)] shrink-0" />}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{cat.description}</p>
+                      </div>
                     </button>
-                    <div className="absolute bottom-3 left-3 bg-slate-900/60 backdrop-blur-md text-white text-[10px] uppercase font-bold px-2 py-1.5 rounded shadow-sm flex items-center gap-1.5 opacity-90">
-                       <CheckCircle2 size={12} className="text-emerald-400"/> Image Attached Securely
-                    </div>
-                  </div>
-                )}
+                  );
+                })}
               </div>
 
-              <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                 <Button
-                  onClick={handleAnalyze}
-                  disabled={stage === 'analyzing' || !description || !address}
-                  className="w-full h-12 text-[15px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20 active:scale-[0.99] transition-all"
+                  variant="citizen"
+                  size="lg"
+                  onClick={() => goToStep(2)}
+                  className="font-semibold px-6"
                 >
-                  {stage === 'analyzing' ? (
-                    <span className="flex items-center gap-2"><Loader2 className="animate-spin" /> {t('report.analyzing')}</span>
-                  ) : (
-                    <span className="flex items-center gap-2"><Sparkles size={18} /> {t('report.reviewContinue')}</span>
-                  )}
+                  Next: Tell Us More <ArrowRight size={16} className="ml-1.5" />
                 </Button>
               </div>
             </motion.div>
-          ) : (
-            <motion.div 
-              className="space-y-8"
-              initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <div className="bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl p-6 shadow-sm">
-                <h3 className="text-xs uppercase tracking-widest font-bold text-indigo-600 dark:text-indigo-400 mb-6 flex items-center gap-2">
-                  <div className="p-1 rounded bg-indigo-100 dark:bg-indigo-900/50"><Sparkles size={14} /></div> 
-                  {t('report.aiVerification')}
-                </h3>
-                
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <Label className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">{t('report.standardizedTitle')}</Label>
-                    <Input
-                      type="text"
-                      value={aiTitle}
-                      onChange={(e) => setAiTitle(e.target.value)}
-                      className="h-11 font-semibold text-slate-900 dark:text-slate-100 bg-white shadow-sm dark:bg-slate-900 focus-visible:ring-indigo-500 border-slate-200 dark:border-slate-700"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">{t('report.routingCategory')}</Label>
-                    <select
-                      value={aiCategory.toLowerCase()}
-                      onChange={(e) => setAiCategory(e.target.value)}
-                      className="flex h-11 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:ring-offset-slate-950 dark:focus:ring-indigo-500 font-medium shadow-sm"
-                    >
-                       <option value={aiCategory.toLowerCase()}>{aiCategory.toUpperCase()}</option>
-                       {CATEGORIES.filter(c => c.value.toLowerCase() !== aiCategory.toLowerCase()).map(c => (
-                         <option key={c.value} value={c.value.toLowerCase()}>{c.label}</option>
-                       ))}
-                    </select>
-                  </div>
+          )}
 
-                  {aiKeywords.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-[10px] text-slate-500 uppercase tracking-widest font-bold block">{t('report.extractedEntities')}</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {aiKeywords.map((kw, i) => (
-                          <Badge key={i} variant="secondary" className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 pointer-events-none hover:bg-slate-100 font-medium">
-                            #{kw}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+          {/* STEP 2: TELL US MORE (DESCRIPTION) */}
+          {currentStep === 2 && (
+            <motion.div
+              key="step-2"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6"
+            >
+              <div>
+                <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold mb-2">
+                  <span className="w-2 h-2 rounded-full bg-[var(--cr-authority)]" />
+                  Category: {selectedCategoryObj?.label}
+                </div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  Describe what happened
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  Type or tap the microphone to speak in {currentLanguage.nativeName} ({currentLanguage.name}).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="incident-description" className="text-xs font-bold uppercase text-slate-500">
+                    Incident Details
+                  </Label>
+
+                  {/* Microphone speech button */}
+                  <button
+                    type="button"
+                    onClick={toggleRecording}
+                    className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all ${
+                      isRecording
+                        ? 'bg-[var(--cr-red-light)] text-[var(--cr-red)] border-red-300 animate-pulse'
+                        : 'bg-blue-50 text-[var(--cr-authority)] border-blue-200 hover:bg-blue-100 dark:bg-slate-800 dark:border-slate-700'
+                    }`}
+                  >
+                    {isRecording ? (
+                      <>
+                        <MicOff size={14} className="animate-bounce" />
+                        <span>Recording... Tap to stop</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic size={14} />
+                        <span>Voice Input ({currentLanguage.code.toUpperCase()})</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <Textarea
+                  id="incident-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="E.g., Large pothole on the left lane near the petrol pump. It is around 1 foot deep and already caused two bikes to slip."
+                  className="min-h-[140px] text-base p-3.5 focus-visible:ring-[var(--cr-authority)]"
+                  maxLength={1000}
+                />
+
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>Be specific about landmarks or safety hazards</span>
+                  <span>{description.length} / 1000 characters</span>
                 </div>
               </div>
 
-              <div className="flex gap-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setStage('draft')}
-                  disabled={stage === 'submitting'}
-                  className="flex-1 h-12 font-bold"
-                >
-                  {t('report.editInput')}
+              {/* Quick snippet helpers */}
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-slate-500">Quick suggestions (tap to add):</span>
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTED_SNIPPETS.map((snippet, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() =>
+                        setDescription((prev) =>
+                          prev ? `${prev}. ${snippet}` : snippet
+                        )
+                      }
+                      className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors border border-slate-200 dark:border-slate-700"
+                    >
+                      + {snippet}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <Button variant="outline" onClick={() => goToStep(1)}>
+                  <ArrowLeft size={16} className="mr-1.5" /> Back
                 </Button>
                 <Button
-                  onClick={handleSubmit}
-                  disabled={stage === 'submitting'}
-                  className="flex-[2] h-12 font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/20"
+                  variant="citizen"
+                  size="lg"
+                  onClick={() => goToStep(3)}
+                  disabled={!description.trim()}
+                  className="font-semibold px-6"
                 >
-                  {stage === 'submitting' ? (
-                    <span className="flex items-center gap-2"><Loader2 className="animate-spin" /> {t('report.submitting')}</span>
+                  Next: Add Evidence <ArrowRight size={16} className="ml-1.5" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 3: ADD EVIDENCE (PHOTO) */}
+          {currentStep === 3 && (
+            <motion.div
+              key="step-3"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6"
+            >
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  Add Photo Evidence
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  Photos enable our AI vision model to automatically verify the hazard severity and dispatch workers 3x faster.
+                </p>
+              </div>
+
+              {!imageUrl ? (
+                <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-5 sm:p-8 text-center hover:border-[var(--cr-authority)] bg-slate-50/50 dark:bg-slate-900/50 transition-colors relative cursor-pointer group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={uploading}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                    aria-label="Upload photo"
+                  />
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-slate-800 text-[var(--cr-authority)] flex items-center justify-center group-hover:scale-105 transition-transform">
+                      {uploading ? (
+                        <Loader2 className="animate-spin text-[var(--cr-authority)]" size={28} />
+                      ) : (
+                        <Camera size={28} />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-sm font-bold text-slate-900 dark:text-slate-100 block">
+                        {uploading ? 'Uploading and validating image…' : 'Take a photo or choose from gallery'}
+                      </span>
+                      <span className="text-xs text-slate-500 mt-1 block">
+                        JPEG, PNG or WebP up to 5 MB (Optional, but recommended)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 max-h-[320px] bg-black">
+                    <img
+                      src={imageUrl}
+                      alt="Uploaded incident proof"
+                      className="w-full h-full object-contain max-h-[320px]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageUrl(null);
+                        setAiImageStatus(null);
+                      }}
+                      className="absolute top-3 right-3 p-2 rounded-full bg-slate-900/70 hover:bg-red-600 text-white transition-colors backdrop-blur-sm"
+                      aria-label="Remove image"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {aiImageStatus === 'verified' && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 text-[var(--cr-green)] border border-emerald-200 dark:border-emerald-900/40 text-xs font-semibold">
+                      <ShieldCheck size={16} className="shrink-0" />
+                      <span>AI Verification: Valid civic evidence detected. Ready for dispatch prioritization.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <Button variant="outline" onClick={() => goToStep(2)}>
+                  <ArrowLeft size={16} className="mr-1.5" /> Back
+                </Button>
+                <div className="flex items-center gap-2">
+                  {!imageUrl && (
+                    <Button variant="ghost" onClick={() => goToStep(4)} className="text-slate-500">
+                      Skip for now
+                    </Button>
+                  )}
+                  <Button
+                    variant="citizen"
+                    size="lg"
+                    onClick={() => goToStep(4)}
+                    className="font-semibold px-6"
+                  >
+                    Next: Confirm Location <ArrowRight size={16} className="ml-1.5" />
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 4: CONFIRM LOCATION (LOCATION) */}
+          {currentStep === 4 && (
+            <motion.div
+              key="step-4"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                    Where is this located?
+                  </h1>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    Click the map to pinpoint or let GPS detect your current spot.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAutoDetectLocation}
+                  disabled={gpsDetecting}
+                  className="font-semibold text-xs border-blue-200 text-[var(--cr-authority)] hover:bg-blue-50 shrink-0"
+                >
+                  {gpsDetecting ? (
+                    <Loader2 size={14} className="animate-spin mr-1.5" />
                   ) : (
-                    <span className="flex items-center gap-2"><Send size={18} /> {t('report.confirmDispatch')}</span>
+                    <Navigation size={14} className="mr-1.5" />
+                  )}
+                  {gpsDetecting ? 'Locating…' : 'Use Current GPS'}
+                </Button>
+              </div>
+
+              {/* Map Preview */}
+              <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 relative h-[220px] sm:h-[280px] shadow-inner">
+                <MapContainer
+                  center={latitude && longitude ? [latitude, longitude] : [28.6139, 77.209]}
+                  zoom={latitude && longitude ? 15 : 12}
+                  scrollWheelZoom={false}
+                  className="w-full h-full z-0"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <MapClickMarker
+                    position={latitude && longitude ? [latitude, longitude] : null}
+                    onSelect={handleSelectCoordinates}
+                  />
+                </MapContainer>
+                <div className="absolute top-2 right-2 bg-slate-900/80 backdrop-blur text-white text-[11px] font-semibold px-2.5 py-1 rounded-md z-[1000] pointer-events-none">
+                  Tap anywhere on map to drop pin
+                </div>
+              </div>
+
+              {/* Address input */}
+              <div className="space-y-2">
+                <Label htmlFor="incident-address" className="text-xs font-bold uppercase text-slate-500">
+                  Street Address or Landmark
+                </Label>
+                <div className="relative">
+                  <MapPin size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="incident-address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Enter street name, colony, landmark, or nearby shop…"
+                    className="pl-10 h-11 text-sm focus-visible:ring-[var(--cr-authority)]"
+                  />
+                </div>
+                {latitude !== null && longitude !== null && (
+                  <span className="text-[11px] text-slate-400 font-mono block">
+                    GPS Coordinates: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                  </span>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <Button variant="outline" onClick={() => goToStep(3)}>
+                  <ArrowLeft size={16} className="mr-1.5" /> Back
+                </Button>
+                <Button
+                  variant="citizen"
+                  size="lg"
+                  onClick={() => goToStep(5)}
+                  disabled={!address.trim()}
+                  className="font-semibold px-6"
+                >
+                  Next: Review & Submit <ArrowRight size={16} className="ml-1.5" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STEP 5: REVIEW & SUBMIT */}
+          {currentStep === 5 && (
+            <motion.div
+              key="step-5"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-6"
+            >
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                  Review Your Civic Report
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  Double check the details before submitting. Every section can be edited.
+                </p>
+              </div>
+
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Category Card */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Category
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(1)}
+                      className="text-xs font-semibold text-[var(--cr-authority)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    {selectedCategoryObj && (
+                      <div className="w-8 h-8 rounded-lg bg-[var(--cr-authority-light)] text-[var(--cr-authority)] flex items-center justify-center">
+                        <selectedCategoryObj.icon size={16} />
+                      </div>
+                    )}
+                    <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                      {selectedCategoryObj?.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Location Card */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Location
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(4)}
+                      className="text-xs font-semibold text-[var(--cr-authority)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 line-clamp-2">
+                    {address}
+                  </p>
+                </div>
+
+                {/* Description Card */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 sm:col-span-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                      Description
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => goToStep(2)}
+                      className="text-xs font-semibold text-[var(--cr-authority)] hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                    {description}
+                  </p>
+                </div>
+
+                {/* Photo Evidence Card */}
+                <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 sm:col-span-2 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {imageUrl ? (
+                      <img
+                        src={imageUrl}
+                        alt="Preview"
+                        className="w-14 h-14 object-cover rounded-lg border border-slate-200"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                        <ImageIcon size={20} />
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                        {imageUrl ? 'Photo Evidence Attached' : 'No Photo Provided'}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {imageUrl
+                          ? 'Valid civic evidence ready for automated priority score'
+                          : 'You can still submit without an image'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => goToStep(3)}
+                    className="text-xs font-semibold text-[var(--cr-authority)] hover:underline"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+
+              {/* Pre-routing Reassurance Box */}
+              <div className="p-4 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 flex items-start gap-3">
+                <Sparkles size={18} className="text-[var(--cr-authority)] shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                  <p className="font-semibold text-slate-900 dark:text-slate-100">
+                    Automated Municipal Dispatch
+                  </p>
+                  <p>
+                    Upon submission, your incident is assigned an immutable tracking ID, triaged via Jan Samadhan AI, and instantly queued with municipal field teams.
+                  </p>
+                </div>
+              </div>
+
+              {/* Submit CTA */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
+                <Button variant="outline" onClick={() => goToStep(4)} disabled={isSubmitting}>
+                  <ArrowLeft size={16} className="mr-1.5" /> Back
+                </Button>
+                <Button
+                  variant="citizen"
+                  size="xl"
+                  onClick={handleSubmitReport}
+                  disabled={isSubmitting}
+                  className="flex-1 font-bold shadow-lg shadow-orange-500/20"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin mr-2" />
+                      Registering Report…
+                    </>
+                  ) : (
+                    <>
+                      <Send size={18} className="mr-2" />
+                      Submit Civic Report
+                    </>
                   )}
                 </Button>
               </div>
@@ -452,9 +1135,9 @@ export default function ReportIncident() {
           )}
         </CardContent>
       </Card>
-      
-      <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-8 tracking-wider font-semibold">
-        {t('report.govFooter')}
+
+      <p className="text-center text-xs text-slate-400 mt-6 font-medium">
+        Jan Samadhan — Smart Civic Grievance & Public Works Redressal Portal
       </p>
     </div>
   );

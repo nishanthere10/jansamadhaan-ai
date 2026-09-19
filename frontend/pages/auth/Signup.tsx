@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { AuthNavbar } from '../../components/layout/AuthNavbar';
@@ -42,6 +42,7 @@ export default function Signup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setLoading(true);
     setError('');
     setSuccess('');
@@ -57,7 +58,9 @@ export default function Signup() {
 
       if (response.ok && result.success) {
         setSuccess('Account created! Redirecting to login…');
-        setTimeout(() => navigate('/login'), 1500);
+        setTimeout(() => {
+          navigate('/login', { state: { email: formData.email, justSignedUp: true } });
+        }, 1200);
       } else {
         const errorMessage = result.detail || result.message || 'Signup failed. Please try again.';
         setError(errorMessage);
@@ -262,12 +265,12 @@ export default function Signup() {
                 className="text-center text-sm text-slate-500 dark:text-slate-400"
               >
                 Already registered?{' '}
-                <a
-                  href="/login"
+                <Link
+                  to="/login"
                   className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline underline-offset-4 transition-all"
                 >
                   Sign in
-                </a>
+                </Link>
               </motion.div>
             </CardFooter>
           </Card>

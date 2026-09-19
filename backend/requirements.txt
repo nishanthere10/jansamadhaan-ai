@@ -13,3 +13,4 @@ langchain-groq
 langchain-core
 groq
 twilio
+google-genai>=2.24.0

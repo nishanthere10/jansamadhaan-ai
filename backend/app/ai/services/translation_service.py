@@ -5,15 +5,15 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from app.ai.models.graph_state import ComplaintGraphState
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class TranslationService:
     def __init__(self):
-        # We will use llama-3.1-8b-instant for simple and fast translations/normalization
         self.llm = ChatGroq(
             api_key=os.environ.get("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant", 
+            model_name=settings.GROQ_MODEL,
             temperature=0.0
         )
         # Use Structured output model from our response models

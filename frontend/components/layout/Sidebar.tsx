@@ -220,7 +220,7 @@ export function Sidebar() {
 
   return (
     <motion.aside
-      className="cr-sidebar hidden md:flex flex-col relative"
+      className="cr-sidebar hidden md:flex flex-col"
       animate={{ width: isCollapsed ? 64 : 240 }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
     >
@@ -268,8 +268,8 @@ export function MobileSidebar() {
 
           {/* Drawer */}
           <motion.aside
-            className="cr-sidebar flex flex-col md:hidden"
-            style={{ width: 'var(--sidebar-width)', zIndex: 200 }}
+            className="cr-sidebar flex flex-col md:hidden overscroll-contain shadow-2xl"
+            style={{ width: 'min(var(--sidebar-width), 85vw)', zIndex: 200 }}
             initial={{ x: '-100%' }}
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}

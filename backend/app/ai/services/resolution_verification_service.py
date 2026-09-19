@@ -7,6 +7,8 @@ from typing import Any
 import requests
 from groq import Groq
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 class ResolutionVerificationService:
@@ -80,7 +82,7 @@ class ResolutionVerificationService:
             )
 
             completion = client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                model=settings.GROQ_VISION_MODEL,
                 messages=[
                     {
                         "role": "user",

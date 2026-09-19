@@ -16,6 +16,12 @@ class Settings(BaseSettings):
 
     # Groq
     GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
+    GROQ_VISION_MODEL: str = "llama-3.2-11b-vision-preview"
+
+    # Gemini Flash (Vision & Multimodal on Free Tier)
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
 
     # App
     ENVIRONMENT: str = "production"
@@ -51,6 +57,10 @@ class Settings(BaseSettings):
         "SUPABASE_ANON_KEY",
         "SUPABASE_JWT_SECRET",
         "GROQ_API_KEY",
+        "GROQ_MODEL",
+        "GROQ_VISION_MODEL",
+        "GEMINI_API_KEY",
+        "GEMINI_MODEL",
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",
         "TWILIO_PHONE_NUMBER",

@@ -30,8 +30,12 @@ export const IncidentTable: React.FC<IncidentTableProps> = ({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="cr-table w-full text-left border-collapse">
+    <div className="cr-table-responsive overflow-x-auto">
+      <div className="flex md:hidden items-center justify-between px-4 py-1.5 bg-[var(--cr-bg-offset)] border-b border-[var(--cr-border)] text-[10.5px] text-[var(--cr-text-muted)] font-medium">
+        <span>⇄ Swipe table horizontally to view all columns</span>
+        <span className="font-mono">{filteredCount} issues</span>
+      </div>
+      <table className="cr-table w-full min-w-[880px] text-left border-collapse">
         <thead>
           <tr className="bg-[var(--cr-bg)] text-[11px] uppercase tracking-wider text-[var(--cr-text-muted)]">
              <th className="font-semibold p-4 w-10">
@@ -49,7 +53,7 @@ export const IncidentTable: React.FC<IncidentTableProps> = ({
              <th className="font-semibold p-4">AI Status</th>
              <th className="font-semibold p-4">Status</th>
              <th className="font-semibold p-4">Assigned To</th>
-             <th className="font-semibold p-4">Reported</th>
+             <th className="font-semibold p-4">SLA & Ageing</th>
              <th className="font-semibold p-4 text-right">Actions</th>
           </tr>
         </thead>

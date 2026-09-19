@@ -24,36 +24,42 @@ export const BatchActionBar: React.FC<BatchActionBarProps> = ({
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 40 }}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[var(--cr-surface)] border border-[var(--cr-border)] shadow-2xl rounded-xl px-5 py-3 flex items-center gap-4"
+          className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] max-w-xl bg-[var(--cr-surface)] border border-[var(--cr-border)] shadow-2xl rounded-xl p-3 sm:px-5 sm:py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3"
         >
-          <span className="text-[13px] font-bold text-[var(--cr-text)]">{selectedCount} selected</span>
-          <div className="w-px h-6 bg-[var(--cr-border)]" />
-          <button
-            onClick={onBatchAcceptTriage}
-            className="text-[12px] flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--cr-primary)] text-white hover:opacity-90 transition-opacity font-medium"
-          >
-            <CheckCircle2 size={14} /> Accept AI Triage
-          </button>
-          <select
-            defaultValue=""
-            onChange={(e) => { 
-               if (e.target.value) {
-                 onBatchAssignWorker(e.target.value); 
-                 e.target.value = ''; 
-               }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="text-[12px] bg-[var(--cr-bg)] border border-[var(--cr-border)] text-[var(--cr-text)] rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-[var(--cr-primary)]"
-          >
-            <option value="" disabled>Assign to Worker...</option>
-            {workers.map(w => <option key={w.id} value={w.id}>{w.full_name}</option>)}
-          </select>
-          <button
-            onClick={onDeselectAll}
-            className="text-[12px] flex items-center gap-1 px-2 py-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
-          >
-            <X size={14} /> Deselect
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] sm:text-[13px] font-bold text-[var(--cr-text)] whitespace-nowrap">
+              {selectedCount} selected
+            </span>
+            <button
+              onClick={onDeselectAll}
+              className="text-[11px] sm:text-[12px] flex items-center gap-1 px-1.5 py-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+            >
+              <X size={13} /> Clear
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto justify-end">
+            <button
+              onClick={onBatchAcceptTriage}
+              className="text-[11.5px] sm:text-[12px] flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[var(--cr-primary)] text-white hover:opacity-90 transition-opacity font-medium cursor-pointer"
+            >
+              <CheckCircle2 size={13} /> Accept Triage
+            </button>
+            <select
+              defaultValue=""
+              onChange={(e) => { 
+                 if (e.target.value) {
+                   onBatchAssignWorker(e.target.value); 
+                   e.target.value = ''; 
+                 }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="text-[11.5px] sm:text-[12px] bg-[var(--cr-bg)] border border-[var(--cr-border)] text-[var(--cr-text)] rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-[var(--cr-primary)]"
+            >
+              <option value="" disabled>Assign to Worker...</option>
+              {workers.map(w => <option key={w.id} value={w.id}>{w.full_name}</option>)}
+            </select>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

@@ -4,6 +4,7 @@ import { BrainCircuit } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useDashboardState } from './hooks/useDashboardState';
+import { AttentionStrip } from './components/AttentionStrip';
 import { DashboardStats } from './components/DashboardStats';
 import { DashboardFilters } from './components/DashboardFilters';
 import { IncidentTable } from './components/IncidentTable';
@@ -11,6 +12,8 @@ import { IncidentRow } from './components/IncidentRow';
 import { ExpandedAiPanel } from './components/ExpandedAiPanel';
 import { ConfirmDispatchDialog } from './components/ConfirmDispatchDialog';
 import { BatchActionBar } from './components/BatchActionBar';
+import { SplitTriageWorkspace } from './components/SplitTriageWorkspace';
+import { TerritoryMapView } from './components/TerritoryMapView';
 
 export default function AuthorityDashboard() {
   const { state, actions, helpers } = useDashboardState();
@@ -21,8 +24,16 @@ export default function AuthorityDashboard() {
         <h1 className="cr-page-title flex items-center gap-2">
           <BrainCircuit size={28} className="text-[var(--cr-blue-mid)]"/> Command Center
         </h1>
-        <p className="cr-page-subtitle">Monitor, triage and assign civic incidents with AI Assistance.</p>
+        <p className="cr-page-subtitle">Monitor, triage and assign civic incidents with Municipal SLA enforcement and AI Dispatch.</p>
       </motion.div>
+
+      {/* Attention Strip - surfaces immediate operational actions */}
+      <AttentionStrip
+        incidents={state.incidents}
+        onFilterCritical={() => actions.setFilterRisk('emergency')}
+        onFilterUnassigned={() => actions.setFilterStatus('pending')}
+        onFilterClustered={() => actions.setFilterRisk('high')}
+      />
 
       <DashboardStats loading={state.loading} counts={state.counts} />
 
@@ -47,47 +58,78 @@ export default function AuthorityDashboard() {
           filtersActive={state.filtersActive}
           onReset={actions.resetFilters}
           onRefresh={actions.load}
+          viewMode={state.viewMode}
+          setViewMode={actions.setViewMode}
+          filterSla={state.filterSla}
+          setFilterSla={actions.setFilterSla}
+          onExportCsv={actions.exportIncidentsCsv}
+          slaBreachedCount={state.slaBreachedCount}
+          unassignedCount={state.unassignedCount}
         />
 
-        <IncidentTable 
-          loading={state.loading} 
-          totalIncidents={state.incidents.length}
-          filteredCount={state.filteredIncidents.length}
-          isAllSelected={state.selectedIds.size > 0 && state.selectedIds.size === state.filteredIncidents.length}
-          onToggleSelectAll={() => actions.toggleSelectAll(state.selectedIds.size === state.filteredIncidents.length)}
-          onResetFilters={actions.resetFilters}
-        >
-          {state.filteredIncidents.map((inc) => (
-            <React.Fragment key={inc.id}>
-              <IncidentRow 
-                incident={inc}
-                isSelected={state.selectedIds.has(inc.id)}
-                isExpanded={state.expandedId === inc.id}
-                onToggleSelect={() => actions.toggleSelect(inc.id)}
-                onExpand={() => actions.handleExpand(inc.id)}
-                timeAgo={helpers.timeAgo(inc.created_at)}
-                timeAgoColor={helpers.timeAgoColor(inc)}
-                isAiPending={helpers.isAiPending(inc)}
-                isAiDone={helpers.isAiDone(inc)}
-                isAiFailed={helpers.isAiFailed(inc)}
-                workerName={helpers.workerName(inc.assigned_to)}
-              >
-                {state.expandedId === inc.id && (
-                  <ExpandedAiPanel 
-                    incident={inc}
-                    isAiPending={helpers.isAiPending(inc)}
-                    isAiFailed={helpers.isAiFailed(inc)}
-                    incidentUpdates={state.incidentUpdates[inc.id] || []}
-                    workers={state.workers}
-                    onReprocessAI={actions.reprocessAI}
-                    onAcceptAiTriage={actions.acceptAiTriage}
-                    onSetConfirmAssign={actions.setConfirmAssign}
-                  />
-                )}
-              </IncidentRow>
-            </React.Fragment>
-          ))}
-        </IncidentTable>
+        {state.viewMode === 'split' ? (
+          <SplitTriageWorkspace
+            incidents={state.filteredIncidents}
+            workers={state.workers}
+            workerWorkloads={state.workerWorkloads}
+            selectedIncidentId={state.expandedId}
+            onSelectIncident={actions.handleExpand}
+            incidentUpdates={state.incidentUpdates}
+            onFastTrackDispatch={actions.fastTrackDispatch}
+            onAssignWorker={actions.assignWorker}
+            onReprocessAI={actions.reprocessAI}
+            onStatusChange={actions.updateIncidentStatus}
+          />
+        ) : state.viewMode === 'map' ? (
+          <TerritoryMapView
+            incidents={state.filteredIncidents}
+            onSelectIncident={actions.handleExpand}
+            onSwitchToWorkspace={(id) => {
+              actions.handleExpand(id);
+              actions.setViewMode('split');
+            }}
+          />
+        ) : (
+          <IncidentTable 
+            loading={state.loading} 
+            totalIncidents={state.incidents.length}
+            filteredCount={state.filteredIncidents.length}
+            isAllSelected={state.selectedIds.size > 0 && state.selectedIds.size === state.filteredIncidents.length}
+            onToggleSelectAll={() => actions.toggleSelectAll(state.selectedIds.size === state.filteredIncidents.length)}
+            onResetFilters={actions.resetFilters}
+          >
+            {state.filteredIncidents.map((inc) => (
+              <React.Fragment key={inc.id}>
+                <IncidentRow 
+                  incident={inc}
+                  isSelected={state.selectedIds.has(inc.id)}
+                  isExpanded={state.expandedId === inc.id}
+                  onToggleSelect={() => actions.toggleSelect(inc.id)}
+                  onExpand={() => actions.handleExpand(inc.id)}
+                  timeAgo={helpers.timeAgo(inc.created_at)}
+                  timeAgoColor={helpers.timeAgoColor(inc)}
+                  isAiPending={helpers.isAiPending(inc)}
+                  isAiDone={helpers.isAiDone(inc)}
+                  isAiFailed={helpers.isAiFailed(inc)}
+                  workerName={helpers.workerName(inc.assigned_to)}
+                >
+                  {state.expandedId === inc.id && (
+                    <ExpandedAiPanel 
+                      incident={inc}
+                      isAiPending={helpers.isAiPending(inc)}
+                      isAiFailed={helpers.isAiFailed(inc)}
+                      incidentUpdates={state.incidentUpdates[inc.id] || []}
+                      workers={state.workers}
+                      onReprocessAI={actions.reprocessAI}
+                      onAcceptAiTriage={actions.acceptAiTriage}
+                      onSetConfirmAssign={actions.setConfirmAssign}
+                    />
+                  )}
+                </IncidentRow>
+              </React.Fragment>
+            ))}
+          </IncidentTable>
+        )}
       </motion.div>
 
       <BatchActionBar 

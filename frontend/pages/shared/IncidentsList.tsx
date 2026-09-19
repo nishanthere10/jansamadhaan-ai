@@ -41,7 +41,7 @@ export default function IncidentsList() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     fetchWithAuth('/api/v1/incidents')
       .then(r => r.json())
       .then(d => {
@@ -50,6 +50,10 @@ export default function IncidentsList() {
       })
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
   const filtered = incidents.filter(i => {
@@ -88,15 +92,15 @@ export default function IncidentsList() {
             placeholder="Search by title, ID, or description..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="cr-input pl-10 w-full"
+            className="cr-input pl-10 w-full text-sm"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter size={14} className="text-[var(--cr-text-muted)]" />
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Filter size={14} className="text-[var(--cr-text-muted)] shrink-0" />
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="cr-input text-sm"
+            className="cr-input text-sm w-full sm:w-auto"
           >
             <option value="all">All Statuses</option>
             <option value="pending">Pending</option>
@@ -129,9 +133,9 @@ export default function IncidentsList() {
               onClick={() => setSelectedIncident(incident)}
               className="cr-card p-4 hover:shadow-md transition-shadow cursor-pointer hover:border-[var(--cr-primary)]/50"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-mono text-[var(--cr-text-muted)]">
                       {incident.tracking_id}
                     </span>
@@ -157,18 +161,18 @@ export default function IncidentsList() {
                   <p className="text-xs text-[var(--cr-text-muted)] line-clamp-1 mt-0.5">
                     {incident.description}
                   </p>
-                  <div className="flex items-center gap-4 mt-2">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
                     {incident.address && (
-                      <span className="flex items-center gap-1 text-[11px] text-[var(--cr-text-muted)]">
-                        <MapPin size={11} /> {incident.address}
+                      <span className="flex items-center gap-1 text-[11px] text-[var(--cr-text-muted)] truncate max-w-xs">
+                        <MapPin size={11} className="shrink-0" /> <span className="truncate">{incident.address}</span>
                       </span>
                     )}
-                    <span className="flex items-center gap-1 text-[11px] text-[var(--cr-text-muted)]">
+                    <span className="flex items-center gap-1 text-[11px] text-[var(--cr-text-muted)] shrink-0">
                       <Clock size={11} /> {new Date(incident.created_at).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
+                <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-1 pt-2 sm:pt-0 border-t sm:border-t-0 border-[var(--cr-border)] shrink-0">
                   <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--cr-text-muted)' }}>
                     {incident.category || '—'}
                   </span>
@@ -193,6 +197,7 @@ export default function IncidentsList() {
         incidentId={selectedIncident?.id || null}
         title={selectedIncident?.title}
         onClose={() => setSelectedIncident(null)}
+        onStatusChange={load}
       />
     </div>
   );

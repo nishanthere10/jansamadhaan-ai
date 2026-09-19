@@ -9,6 +9,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // ── shadcn standard variants ──────────────────────────────────────────
         default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
@@ -19,6 +20,23 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+
+        // ── Civic-branded variants ────────────────────────────────────────────
+        // Citizen primary CTA — saffron orange. Use for citizen-facing primary actions.
+        citizen:
+          "bg-[var(--cr-orange)] text-white shadow-[0_1px_3px_rgba(244,121,32,0.25)] hover:bg-[var(--cr-orange-dark)] hover:shadow-[0_6px_16px_rgba(244,121,32,0.38)] hover:-translate-y-px active:translate-y-0 active:shadow-[0_1px_3px_rgba(244,121,32,0.20)]",
+
+        // Authority primary action — government blue. Use for authority/system actions.
+        authority:
+          "bg-[var(--cr-blue-mid)] text-white shadow-[0_1px_3px_rgba(0,85,164,0.25)] hover:bg-[var(--cr-blue)] hover:shadow-[0_6px_16px_rgba(0,85,164,0.38)] hover:-translate-y-px active:translate-y-0",
+
+        // Success / resolution — green. Use only for completion/resolution actions (worker).
+        success:
+          "bg-[var(--cr-green-mid)] text-white shadow-[0_1px_3px_rgba(26,122,62,0.25)] hover:bg-[var(--cr-green)] hover:shadow-[0_6px_16px_rgba(26,122,62,0.35)] hover:-translate-y-px active:translate-y-0",
+
+        // Danger — red. Use for delete/reject destructive actions with solid bg.
+        danger:
+          "bg-[var(--cr-red)] text-white shadow-[0_1px_3px_rgba(185,28,28,0.25)] hover:brightness-90 active:brightness-95",
       },
       size: {
         default:
@@ -26,6 +44,8 @@ const buttonVariants = cva(
         xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+        // Large CTA — 40px height, optimized for mobile citizen/worker primary actions
+        xl: "h-10 gap-2 px-5 text-sm font-semibold rounded-xl has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4",
         icon: "size-8",
         "icon-xs":
           "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",

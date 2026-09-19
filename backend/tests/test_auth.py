@@ -99,11 +99,38 @@ class TestSignup:
         assert call_kwargs["options"]["data"]["full_name"] == "Ravi Kumar"
         assert call_kwargs["options"]["data"]["phone"] == "9123456789"
 
-    def test_role_in_request_is_always_forced_to_citizen(self, client, mock_supabase):
+    def test_role_in_request_is_always_forced_to_citizen_in_production(self, client, mock_supabase):
         """
-        GOTCHA #5: A malicious user sending role='authority' must be ignored.
+        GOTCHA #5: In production, a user sending role='authority' must be ignored.
         The profile row must always be inserted with role='citizen'.
         """
+        from unittest.mock import patch
+        from app.core.config import settings
+
+        auth_res = MagicMock()
+        auth_res.user = _make_auth_user()
+        mock_supabase.auth.sign_up.return_value = auth_res
+
+        upserted_data = {}
+
+        def capture_upsert(data):
+            upserted_data.update(data)
+            m = MagicMock()
+            m.execute.return_value = MagicMock(data=[data])
+            return m
+
+        mock_supabase.table.return_value.upsert.side_effect = capture_upsert
+
+        with patch.object(settings, "ENVIRONMENT", "production"):
+            res = client.post("/api/v1/auth/signup", json=_signup_payload(role="authority"))
+
+        assert res.status_code == 200
+        assert upserted_data.get("role") == "citizen", (
+            "Privilege escalation: role was not forced to 'citizen'"
+        )
+
+    def test_role_in_request_is_respected_in_development(self, client, mock_supabase):
+        """In development/testing, requested role is assigned for testing purposes."""
         auth_res = MagicMock()
         auth_res.user = _make_auth_user()
         mock_supabase.auth.sign_up.return_value = auth_res
@@ -121,9 +148,7 @@ class TestSignup:
         res = client.post("/api/v1/auth/signup", json=_signup_payload(role="authority"))
 
         assert res.status_code == 200
-        assert upserted_data.get("role") == "citizen", (
-            "Privilege escalation: role was not forced to 'citizen'"
-        )
+        assert upserted_data.get("role") == "authority"
 
     def test_duplicate_email_returns_400(self, client, mock_supabase):
         """GOTCHA #2: duplicate email must return 400 with a friendly message."""

@@ -1,19 +1,64 @@
-const statusMap: Record<string, { label: string; className: string; dot: string }> = {
-  pending:     { label: 'Pending',     className: 'cr-badge cr-badge-pending',  dot: '#B45309' },
-  assigned:    { label: 'Assigned',    className: 'cr-badge cr-badge-assigned', dot: '#0055A4' },
-  'in-progress': { label: 'In Progress', className: 'cr-badge cr-badge-progress', dot: '#2563EB' },
-  resolved:    { label: 'Resolved',    className: 'cr-badge cr-badge-resolved', dot: '#1B7A3E' },
-  rejected:    { label: 'Rejected',    className: 'cr-badge cr-badge-rejected', dot: '#C0392B' },
+import { CheckCircle2, Clock, Loader2, UserCheck, XCircle, ShieldCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface StatusConfig {
+  label: string;
+  className: string;
+  icon: React.ReactNode;
+}
+
+const statusMap: Record<string, StatusConfig> = {
+  pending: {
+    label: 'Pending',
+    className: 'cr-badge cr-badge-pending',
+    icon: <Clock size={10} strokeWidth={2.5} aria-hidden />,
+  },
+  assigned: {
+    label: 'Assigned',
+    className: 'cr-badge cr-badge-assigned',
+    icon: <UserCheck size={10} strokeWidth={2.5} aria-hidden />,
+  },
+  'in-progress': {
+    label: 'In Progress',
+    className: 'cr-badge cr-badge-progress',
+    icon: <Loader2 size={10} strokeWidth={2.5} className="animate-spin" aria-hidden />,
+  },
+  resolved: {
+    label: 'Resolved',
+    className: 'cr-badge cr-badge-resolved',
+    icon: <CheckCircle2 size={10} strokeWidth={2.5} aria-hidden />,
+  },
+  rejected: {
+    label: 'Rejected',
+    className: 'cr-badge cr-badge-rejected',
+    icon: <XCircle size={10} strokeWidth={2.5} aria-hidden />,
+  },
+  verified: {
+    label: 'Verified',
+    className: 'cr-badge cr-badge-resolved',
+    icon: <ShieldCheck size={10} strokeWidth={2.5} aria-hidden />,
+  },
 };
 
-export function StatusBadge({ status }: { status: string }) {
-  const config = statusMap[status] ?? { label: status, className: 'cr-badge cr-badge-pending', dot: '#999' };
+interface StatusBadgeProps {
+  status: string;
+  className?: string;
+}
+
+export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const config = statusMap[status] ?? {
+    label: status,
+    className: 'cr-badge cr-badge-pending',
+    icon: <Clock size={10} strokeWidth={2.5} aria-hidden />,
+  };
+
   return (
-    <span className={config.className}>
-      <span
-        className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ backgroundColor: config.dot }}
-      />
+    <span
+      className={cn(config.className, className)}
+      role="status"
+      aria-label={`Status: ${config.label}`}
+    >
+      {config.icon}
       {config.label}
     </span>
   );

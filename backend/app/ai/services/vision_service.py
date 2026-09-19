@@ -1,30 +1,15 @@
-import base64
 import logging
-import os
-
-import requests
-from groq import Groq
-
+import json
 from app.ai.models.graph_state import ComplaintGraphState
+from app.services.gemini_vision_service import analyzeImage
 
 logger = logging.getLogger(__name__)
 
-
 class VisionAnalysisService:
-    def __init__(self):
-        self.api_key = os.environ.get("GROQ_API_KEY")
-        if not self.api_key:
-            logger.warning("GROQ_API_KEY is not set. VisionAnalysisService may fail.")
-        else:
-            self.client = Groq(api_key=self.api_key)
-            
-        # Using Llama 4 Scout for multi-modal analysis
-        self.model_name = "meta-llama/llama-4-scout-17b-16e-instruct"
-
     def process(self, state: ComplaintGraphState) -> dict:
         """
         Analyzes the uploaded image (if any) and extracts factual visual evidence.
-        Downloads the image locally first and converts it to base64 to avoid URL 403 access issues.
+        Delegates to the gemini_vision_service.
         """
         image_url = state.get("image_url")
         
@@ -32,28 +17,15 @@ class VisionAnalysisService:
             logger.info("No image_url provided in state. Skipping Vision Analysis.")
             return {"vision_analysis": None}
 
-        if not hasattr(self, 'client'):
-            logger.error("Vision client not initialized (missing API key).")
-            return {"vision_analysis": "Visual processing delayed or skipped (missing configuration)."}
-
         logger.info(f"Starting Vision Analysis for image: {image_url}")
         
         try:
-            if image_url.startswith("data:image/"):
-                base64_url = image_url
-            else:
-                # 1. Validate image URL to prevent SSRF
+            # 1. Validate image URL to prevent SSRF
+            if image_url.startswith("http"):
                 from app.core.security import is_safe_image_url
                 if not is_safe_image_url(image_url):
                     logger.warning(f"Rejected potentially unsafe image URL: {image_url}")
-                    return {"vision_analysis": "Image URL validation failed."}
-
-                # 2. Fetch image directly to bypass 403 restriction from Groq crawler
-                response = requests.get(image_url, timeout=10)
-                response.raise_for_status()
-                content_type = response.headers.get('content-type', 'image/jpeg')
-                base64_image = base64.b64encode(response.content).decode("utf-8")
-                base64_url = f"data:{content_type};base64,{base64_image}"
+                    return {"vision_analysis": "Image URL validation failed.", "structured_visionData": None}
 
             lat = state.get("location_lat")
             lng = state.get("location_lng")
@@ -62,9 +34,6 @@ class VisionAnalysisService:
             geo_info = ""
             if lat and lng:
                 geo_info = f" The incident occurred at Latitude: {lat}, Longitude: {lng} ({address_context})."
-
-            # Using Llama-4-Scout Vision
-            current_model = "meta-llama/llama-4-scout-17b-16e-instruct"
 
             prompt = (
                 "You are an expert civic infrastructure inspector. Analyze the following uploaded photo. "
@@ -86,35 +55,18 @@ class VisionAnalysisService:
                 "Do not make up information. ONLY output the JSON object."
             )
 
-            completion = self.client.chat.completions.create(
-                model=current_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": base64_url
-                                }
-                            }
-                        ]
-                    }
-                ],
-                temperature=0.1, 
-                max_tokens=512,
-                response_format={"type": "json_object"}
+            # 2. Call Gemini Vision Service
+            response = analyzeImage(
+                image=image_url,
+                prompt=prompt,
+                options={"jsonMode": True}
             )
 
-            import json
-            raw_response = completion.choices[0].message.content.strip()
-            logger.info(f"Vision Analysis raw completed: {raw_response[:100]}...")
-            
-            try:
-                parsed_json = json.loads(raw_response)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON from vision model: {e}")
+            parsed_json = None
+            if response.get("success") and response.get("data"):
+                parsed_json = response["data"]
+            else:
+                logger.error(f"Failed to get structured JSON from Gemini. Response text: {response.get('text')}")
                 parsed_json = {
                     "is_relevant": False,
                     "has_visible_damage": False,
@@ -122,11 +74,11 @@ class VisionAnalysisService:
                     "hazard_description": "Failed to parse hazard",
                     "estimated_size": "Unknown",
                     "objects_detected": [],
-                    "vision_summary": raw_response
+                    "vision_summary": response.get("text", "Failed to analyze image.")
                 }
-            
+
             return {
-                "vision_analysis": parsed_json.get("vision_summary", raw_response),
+                "vision_analysis": parsed_json.get("vision_summary", response.get("text")),
                 "structured_visionData": parsed_json
             }
 

@@ -32,3 +32,25 @@ async def test_classify(req: ClassifyRequest, user: dict = Depends(get_current_u
     svc = ClassificationService()
     state = {"original_text": req.text}
     return svc.process(state)
+
+
+class VisionAnalyzeRequest(BaseModel):
+    image: str
+    prompt: str = "Analyze this image and identify any civic infrastructure defects, damage, or safety hazards."
+    json_mode: bool = True
+
+
+@router.post("/vision/analyze")
+async def test_vision_analyze(req: VisionAnalyzeRequest, user: dict = Depends(get_current_user)):
+    """Standalone Gemini Vision Analysis Endpoint"""
+    from app.services.gemini_vision_service import analyzeImage
+    try:
+        result = analyzeImage(
+            image=req.image,
+            prompt=req.prompt,
+            options={"jsonMode": req.json_mode}
+        )
+        return {"success": True, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

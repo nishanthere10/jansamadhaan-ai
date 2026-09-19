@@ -1,11 +1,26 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { fetchWithAuth } from '../../lib/api';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { SeverityBadge } from '../../components/shared/SeverityBadge';
 import { EmptyState } from '../../components/shared/EmptyState';
-import { PlusCircle, MapPin, AlertCircle, FileText, Activity, CheckCircle, Map as MapIcon, ChevronRight } from 'lucide-react';
+import { ErrorState } from '../../components/shared/ErrorState';
+import { CopyTrackingId } from '../../components/shared/CopyTrackingId';
+import {
+  PlusCircle,
+  MapPin,
+  Clock,
+  Activity,
+  CheckCircle2,
+  Map as MapIcon,
+  ChevronRight,
+  ShieldCheck,
+  Calendar,
+  AlertCircle,
+  FileText,
+} from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { Incident, ApiResponse } from '../../types';
 import { useTranslation } from '../../lib/useTranslation';
@@ -17,7 +32,7 @@ import { HeatmapLayer } from '../../components/shared/HeatmapLayer';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { KpiSkeleton, IncidentRowSkeleton } from '../../components/ui/skeleton';
 import { IncidentDetailModal } from '../../components/shared/IncidentDetailModal';
 
 // Fix leaflet marker icon issue in React
@@ -31,278 +46,365 @@ L.Icon.Default.mergeOptions({
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.04 } },
 };
 
 const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 15, scale: 0.98 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } },
+  hidden: { opacity: 0, y: 12, scale: 0.99 },
+  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
 };
+
+function getGreeting(name?: string) {
+  const hour = new Date().getHours();
+  let timeStr = 'Good morning';
+  if (hour >= 12 && hour < 17) timeStr = 'Good afternoon';
+  else if (hour >= 17) timeStr = 'Good evening';
+
+  const firstName = name?.split(' ')[0];
+  return firstName ? `${timeStr}, ${firstName}` : timeStr;
+}
 
 export default function CitizenDashboard() {
   const user = useAuthStore((s) => s.user);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIncident, setSelectedIncident] = useState<{id: string, title?: string} | null>(null);
+  const [selectedIncident, setSelectedIncident] = useState<{ id: string; title?: string } | null>(null);
   const { t } = useTranslation();
 
   // Find center for map (default to first incident with location)
-  const mapCenterStr = incidents.find(i => i.location_lat && i.location_lng);
-  const defaultCenter = mapCenterStr 
-    ? [mapCenterStr.location_lat!, mapCenterStr.location_lng!] as [number, number]
-    : [28.6139, 77.2090] as [number, number]; // New Delhi default
+  const mapCenterStr = incidents.find((i) => i.location_lat && i.location_lng);
+  const defaultCenter = mapCenterStr
+    ? ([mapCenterStr.location_lat!, mapCenterStr.location_lng!] as [number, number])
+    : ([28.6139, 77.209] as [number, number]);
 
-  // Build heatmap data points: [lat, lng, intensity]
+  // Build heatmap points: [lat, lng, intensity]
   const heatPoints: [number, number, number][] = incidents
-    .filter(i => i.location_lat && i.location_lng)
-    .map(i => [
+    .filter((i) => i.location_lat && i.location_lng)
+    .map((i) => [
       i.location_lat!,
       i.location_lng!,
-      // Intensity based on severity and cluster size
-      (i.severity === 'critical' ? 1.0 : i.severity === 'high' ? 0.8 : i.severity === 'medium' ? 0.5 : 0.3)
-        * (1 + (i.duplicate_count || 0) * 0.15) // Boost clustered incidents
+      (i.severity === 'critical' ? 1.0 : i.severity === 'high' ? 0.8 : i.severity === 'medium' ? 0.5 : 0.3) *
+        (1 + (i.duplicate_count || 0) * 0.15),
     ]);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetchWithAuth('/api/v1/incidents');
-        const json: ApiResponse<Incident[]> = await res.json();
-        if (res.ok && json.success && json.data) {
-          setIncidents(json.data);
-        } else {
-          setError(json.detail || json.message || "Failed to load incidents");
-        }
-      } catch (err) {
-        console.error('Failed to load incidents', err);
-        setError("Connection error. Please try again.");
-      } finally {
-        setLoading(false);
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth('/api/v1/incidents');
+      const json: ApiResponse<Incident[]> = await res.json();
+      if (res.ok && json.success && json.data) {
+        setIncidents(json.data);
+      } else {
+        setError(json.detail || json.message || 'Failed to load your complaints');
       }
+    } catch (err) {
+      console.error('Failed to load incidents', err);
+      setError('Could not connect to the municipal server. Please check your network and retry.');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     load();
   }, []);
 
   const totalReports = incidents.length;
-  const inProgress = incidents.filter(i => ['pending', 'in-progress'].includes(i.status)).length;
-  const resolved = incidents.filter(i => i.status === 'resolved').length;
+  const pendingCount = incidents.filter((i) => i.status === 'pending').length;
+  const activeCount = incidents.filter((i) => ['assigned', 'in-progress'].includes(i.status)).length;
+  const resolvedCount = incidents.filter((i) => i.status === 'resolved').length;
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
-      {/* Header section — Premium UX4G Grid Style */}
+    <div className="max-w-6xl mx-auto pb-16 px-4 sm:px-6">
+      {/* ── TOP GREETING & PRIMARY CITIZEN CTA ── */}
       <motion.div
-        className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8 border-b border-slate-200 dark:border-slate-800 pb-6"
+        className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pt-4 pb-6 border-b border-slate-200 dark:border-slate-800"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.4 }}
       >
-        <div className="space-y-1">
-          <Badge variant="outline" className="mb-2 uppercase tracking-wider text-[10px] font-bold text-blue-600 border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/50">
-            {t('citizen.badge')}
+        <div>
+          <Badge
+            variant="outline"
+            className="mb-2 uppercase tracking-wider text-[10px] font-bold text-blue-600 border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/50"
+          >
+            Citizen Service Portal
           </Badge>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            {t('citizen.title')}
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            {getGreeting(user?.full_name)}
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">
-            {t('citizen.welcome')} <span className="font-semibold text-slate-700 dark:text-slate-300">{user?.full_name?.split(' ')[0] || t('auth.roleCitizen')}</span>{t('citizen.welcomeSuffix')}
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">
+            Here is the live status and progress of your reported community issues.
           </p>
         </div>
 
-        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-          <Button asChild className="h-11 px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20">
+        {/* Dominant Citizen Action: Orange CTA */}
+        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="shrink-0 w-full sm:w-auto">
+          <Button asChild variant="citizen" size="lg" className="w-full sm:w-auto shadow-lg shadow-orange-500/20 font-bold justify-center">
             <NavLink to="/citizen/report">
               <PlusCircle size={18} className="mr-2" />
-              <span className="font-semibold">{t('citizen.submitIncident')}</span>
+              <span>Report New Incident</span>
             </NavLink>
           </Button>
         </motion.div>
       </motion.div>
 
-      <AnimatePresence>
-        {error && !loading && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }} 
-            animate={{ opacity: 1, height: 'auto' }} 
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden mb-6"
-          >
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-100 dark:border-red-900/50 font-medium text-sm">
-              <AlertCircle size={16} className="shrink-0" />
-              <p>{error}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <IncidentDetailModal 
-        incidentId={selectedIncident?.id || null} 
-        title={selectedIncident?.title} 
-        onClose={() => setSelectedIncident(null)} 
+      {/* Incident Detail Modal */}
+      <IncidentDetailModal
+        incidentId={selectedIncident?.id || null}
+        title={selectedIncident?.title}
+        onClose={() => setSelectedIncident(null)}
+        onStatusChange={load}
       />
 
+      {/* ── ERROR STATE WITH RETRY ── */}
+      {error && !loading && (
+        <div className="mb-6">
+          <ErrorState
+            title="Unable to load your reports"
+            description={error}
+            onRetry={load}
+          />
+        </div>
+      )}
+
+      {/* ── LOADING SKELETON PASS ── */}
       {loading ? (
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="flex-1 flex flex-col gap-6">
-            <div className="grid grid-cols-3 gap-4">
-              <Skeleton className="h-28 rounded-xl" />
-              <Skeleton className="h-28 rounded-xl" />
-              <Skeleton className="h-28 rounded-xl" />
-            </div>
-            <div className="space-y-3">
-              <Skeleton className="h-20 rounded-xl" />
-              <Skeleton className="h-20 rounded-xl" />
-              <Skeleton className="h-20 rounded-xl" />
-            </div>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <KpiSkeleton />
+            <KpiSkeleton />
+            <KpiSkeleton />
           </div>
-          <Skeleton className="lg:w-[340px] h-[350px] rounded-xl hidden lg:block" />
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 space-y-3">
+              <IncidentRowSkeleton />
+              <IncidentRowSkeleton />
+              <IncidentRowSkeleton />
+            </div>
+            <div className="lg:w-[350px] h-[340px] rounded-2xl bg-slate-100 dark:bg-slate-800/50 animate-pulse hidden lg:block" />
+          </div>
         </div>
       ) : (
-        <div className="flex flex-col lg:flex-row gap-6">
-          
-          {/* Main Content Column */}
-          <div className="flex-1 flex flex-col gap-6">
-            
-            {/* Quick Stats - Premium UX4G Grid */}
-            <div className="grid grid-cols-3 gap-5">
-              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4 }}>
-                <Card className="border-t-4 border-t-blue-500 shadow-sm bg-white/60 dark:bg-slate-900/60 backdrop-blur-md">
-                  <CardContent className="p-5 flex flex-col justify-between">
-                    <div className="flex items-center gap-2 text-slate-500 mb-3">
-                       <FileText size={16} /> <span className="text-[11px] font-bold uppercase tracking-widest">{t('citizen.total')}</span>
-                    </div>
-                    <div className="text-3xl font-bold tracking-tight">{totalReports}</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+        <div className="space-y-6">
+          {/* ── REASSURANCE STATS ROW ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Pending / Under Review */}
+            <Card className="border-t-4 border-t-amber-500 shadow-sm bg-white dark:bg-slate-900">
+              <CardContent className="p-5 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Clock size={14} className="text-amber-500" /> Under Review / Pending
+                  </span>
+                  <div className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
+                    {pendingCount}
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center font-bold text-sm">
+                  {totalReports > 0 ? `${Math.round((pendingCount / totalReports) * 100)}%` : '0%'}
+                </div>
+              </CardContent>
+            </Card>
 
-              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, duration: 0.4 }}>
-                <Card className="border-t-4 border-t-orange-500 shadow-sm bg-white/60 dark:bg-slate-900/60 backdrop-blur-md">
-                  <CardContent className="p-5 flex flex-col justify-between">
-                    <div className="flex items-center gap-2 text-slate-500 mb-3">
-                       <Activity size={16} /> <span className="text-[11px] font-bold uppercase tracking-widest">{t('citizen.active')}</span>
-                    </div>
-                    <div className="text-3xl font-bold tracking-tight">{inProgress}</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+            {/* Active / In Progress */}
+            <Card className="border-t-4 border-t-blue-500 shadow-sm bg-white dark:bg-slate-900">
+              <CardContent className="p-5 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <Activity size={14} className="text-blue-500" /> Active in Field
+                  </span>
+                  <div className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
+                    {activeCount}
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center font-bold text-sm">
+                  {totalReports > 0 ? `${Math.round((activeCount / totalReports) * 100)}%` : '0%'}
+                </div>
+              </CardContent>
+            </Card>
 
-              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.4 }}>
-                <Card className="border-t-4 border-t-emerald-500 shadow-sm bg-white/60 dark:bg-slate-900/60 backdrop-blur-md">
-                  <CardContent className="p-5 flex flex-col justify-between">
-                    <div className="flex items-center gap-2 text-slate-500 mb-3">
-                       <CheckCircle size={16} /> <span className="text-[11px] font-bold uppercase tracking-widest">{t('citizen.resolved')}</span>
-                    </div>
-                    <div className="text-3xl font-bold tracking-tight">{resolved}</div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
+            {/* Resolved */}
+            <Card className="border-t-4 border-t-emerald-500 shadow-sm bg-white dark:bg-slate-900">
+              <CardContent className="p-5 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className="text-emerald-500" /> Resolved & Closed
+                  </span>
+                  <div className="text-3xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
+                    {resolvedCount}
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center font-bold text-sm">
+                  {totalReports > 0 ? `${Math.round((resolvedCount / totalReports) * 100)}%` : '0%'}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-            {/* List */}
-            <div className="mt-2">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
-                  <Activity size={18} className="text-blue-500" /> 
-                  {t('citizen.incidentFeed')}
+          {/* ── TWO COLUMN MAIN AREA ── */}
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Left: Your Reports List */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-3.5">
+                <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <FileText size={18} className="text-[var(--cr-authority)]" />
+                  Your Reported Issues ({totalReports})
                 </h2>
               </div>
-              
+
               {incidents.length === 0 ? (
                 <EmptyState
-                  title={t('citizen.emptyTitle')}
-                  description={t('citizen.emptyDesc')}
-                  action={<Button asChild className="mt-4"><NavLink to="/citizen/report"><MapPin size={16} className="mr-2" /> {t('citizen.scanNeighborhood')}</NavLink></Button>}
+                  title="No complaints filed yet"
+                  description="You haven't reported any civic issues in your neighborhood. Spot a pothole, broken streetlight, or garbage pile? Report it now for prompt municipal resolution."
+                  action={
+                    <Button asChild variant="citizen" className="mt-4 font-semibold">
+                      <NavLink to="/citizen/report">
+                        <PlusCircle size={16} className="mr-1.5" /> Report Your First Issue
+                      </NavLink>
+                    </Button>
+                  }
                 />
               ) : (
-                <motion.div className="flex flex-col gap-3" variants={containerVariants} initial="hidden" animate="visible">
-                  {incidents.map((inc) => (
-                    <motion.div key={inc.id} variants={cardVariants}>
-                      <Card 
-                        className="group cursor-pointer hover:border-blue-300 dark:hover:border-blue-800 transition-colors shadow-sm hover:shadow-md bg-white/80 dark:bg-slate-900/80 backdrop-blur"
-                        onClick={() => setSelectedIncident({ id: inc.id, title: inc.title })}
-                      >
-                        <CardContent className="p-4 flex items-center justify-between">
-                          <div className="flex-1 min-w-0 pr-4">
-                            <div className="flex items-center gap-3 mb-2">
-                              <StatusBadge status={inc.status} />
-                              <Badge variant="secondary" className="font-mono text-[10px] tracking-tight text-slate-500 bg-slate-100 dark:bg-slate-800/50">
-                                {inc.tracking_id}
-                              </Badge>
-                              {inc.ai_category && (
-                                <Badge className="ml-auto text-[10px] uppercase font-bold text-indigo-700 bg-indigo-100 hover:bg-indigo-200 dark:text-indigo-300 dark:bg-indigo-900/40">
-                                  AI {inc.ai_category}
-                                </Badge>
-                              )}
+                <motion.div
+                  className="space-y-3"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  {incidents.map((inc) => {
+                    const formattedDate = inc.created_at
+                      ? new Date(inc.created_at).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : 'Recently';
+
+                    return (
+                      <motion.div key={inc.id} variants={cardVariants}>
+                        <Card
+                          className="group cursor-pointer border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-md transition-all bg-white dark:bg-slate-900"
+                          onClick={() => setSelectedIncident({ id: inc.id, title: inc.title })}
+                        >
+                          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0 space-y-2">
+                              {/* Top row badges */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <StatusBadge status={inc.status} />
+                                <SeverityBadge severity={inc.severity} />
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <CopyTrackingId trackingId={inc.tracking_id} />
+                                </div>
+                                {inc.ai_category && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] uppercase font-bold text-slate-600 bg-slate-100 dark:bg-slate-800"
+                                  >
+                                    {inc.ai_category}
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {/* Title */}
+                              <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
+                                {inc.title}
+                              </h3>
+
+                              {/* Meta: location + date */}
+                              <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-500">
+                                <span className="flex items-center gap-1.5 truncate max-w-sm">
+                                  <MapPin size={13} className="text-slate-400 shrink-0" />
+                                  <span className="truncate">{inc.address || 'Location registered via GPS'}</span>
+                                </span>
+                                <span className="flex items-center gap-1 shrink-0 text-slate-400">
+                                  <Calendar size={12} />
+                                  <span>{formattedDate}</span>
+                                </span>
+                              </div>
                             </div>
-                            <h3 className="font-semibold text-[15px] truncate text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                              {inc.title}
-                            </h3>
-                            <div className="text-[13px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1.5 mt-1.5 font-medium">
-                              <MapPin size={13} className="text-slate-400" /> {inc.address || t('citizen.unknownAddress')}
+
+                            {/* Chevron right */}
+                            <div className="shrink-0 p-2 rounded-lg group-hover:bg-slate-100 dark:group-hover:bg-slate-800 text-slate-400 group-hover:text-blue-600 transition-colors">
+                              <ChevronRight size={20} />
                             </div>
-                          </div>
-                          <ChevronRight size={20} className="text-slate-400 group-hover:text-blue-500 transition-colors flex-shrink-0" />
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
                 </motion.div>
               )}
             </div>
-          </div>
 
-          {/* Right Column: AI & Geography context */}
-          <div className="lg:w-[350px] flex flex-col gap-6">
-            <motion.div 
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="sticky top-6"
-            >
-              <Card className="overflow-hidden border-slate-200 dark:border-slate-800 shadow-md">
-                <CardHeader className="p-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/30">
-                  <CardTitle className="text-[14px] flex items-center gap-2">
-                    <MapIcon size={18} className="text-blue-600 dark:text-blue-400" />
-                    Community Map
+            {/* Right: Community Map & Hotspots */}
+            <div className="lg:w-[360px] shrink-0 space-y-6">
+              <Card className="overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
+                <CardHeader className="p-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/70 dark:bg-slate-900/50">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <MapIcon size={16} className="text-[var(--cr-authority)]" />
+                      Community Incident Map
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 font-mono">
+                      Live
+                    </span>
                   </CardTitle>
                 </CardHeader>
-                <div className="h-[300px] relative flex shadow-inner border-b border-slate-100 dark:border-slate-800/60 bg-blue-50 dark:bg-slate-950">
-                  <MapContainer center={defaultCenter} zoom={13} scrollWheelZoom={false} className="w-full h-full z-0">
+
+                <div className="h-[280px] relative w-full bg-slate-100 dark:bg-slate-950">
+                  <MapContainer
+                    center={defaultCenter}
+                    zoom={13}
+                    scrollWheelZoom={false}
+                    className="w-full h-full z-0"
+                  >
                     <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    {/* Heatmap overlay */}
                     {heatPoints.length > 0 && <HeatmapLayer points={heatPoints} />}
-                    {incidents.filter(i => i.location_lat && i.location_lng).map(inc => (
-                      <Marker key={inc.id} position={[inc.location_lat!, inc.location_lng!]}>
-                        <Popup>
-                          <div className="font-sans font-medium text-slate-800 py-1">
-                            <h4 className="font-bold text-[13px] leading-tight mb-1">{inc.title}</h4>
-                            <StatusBadge status={inc.status} />
-                            {inc.duplicate_count && inc.duplicate_count > 0 && (
-                              <p className="text-[11px] text-orange-600 font-bold mt-1">🔥 {inc.duplicate_count} related reports</p>
-                            )}
-                            <div className="mt-2 text-[11px] text-blue-600 underline cursor-pointer" onClick={() => setSelectedIncident({ id: inc.id, title: inc.title })}>View Details</div>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    ))}
+                    {incidents
+                      .filter((i) => i.location_lat && i.location_lng)
+                      .map((inc) => (
+                        <Marker key={inc.id} position={[inc.location_lat!, inc.location_lng!]}>
+                          <Popup>
+                            <div className="text-xs space-y-1 font-sans">
+                              <p className="font-bold text-slate-900">{inc.title}</p>
+                              <p className="text-slate-500">{inc.address}</p>
+                              <button
+                                type="button"
+                                className="text-blue-600 font-semibold underline mt-1 block"
+                                onClick={() => setSelectedIncident({ id: inc.id, title: inc.title })}
+                              >
+                                View full details →
+                              </button>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      ))}
                   </MapContainer>
                 </div>
-                <CardContent className="p-4 bg-slate-50/50 dark:bg-slate-900/30">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-slate-500 font-medium">
-                      🌡️ Heatmap showing {heatPoints.length} incident hotspots
-                    </p>
-                    <span className="text-[10px] font-mono text-slate-400">Live</span>
-                  </div>
+
+                <CardContent className="p-3.5 bg-slate-50/50 dark:bg-slate-900/40 text-xs text-slate-500 flex items-center justify-between">
+                  <span>{heatPoints.length} geotagged issues</span>
+                  <span className="text-[11px] text-slate-400">Updates in real-time</span>
                 </CardContent>
               </Card>
-            </motion.div>
+
+              {/* Citizen Trust Banner */}
+              <Card className="p-4 border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                  <ShieldCheck size={16} className="text-[var(--cr-authority)]" />
+                  <span>Jan Samadhan Citizen Assurance</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Every issue reported through Jan Samadhan receives an immutable public tracking receipt. Status transitions are verified with field photo evidence before closure.
+                </p>
+              </Card>
+            </div>
           </div>
-          
         </div>
       )}
     </div>

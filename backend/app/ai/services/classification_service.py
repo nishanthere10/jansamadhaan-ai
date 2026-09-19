@@ -5,15 +5,15 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 from app.ai.models.graph_state import ComplaintGraphState
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class ClassificationService:
     def __init__(self):
-        # We use llama-3.3-70b-versatile for complex reasoning (classification) and robust JSON output
         self.llm = ChatGroq(
             api_key=os.environ.get("GROQ_API_KEY"),
-            model_name="llama-3.3-70b-versatile", 
+            model_name=settings.GROQ_MODEL,
             temperature=0.1
         )
         from app.ai.models.ai_response_models import ClassificationResponse

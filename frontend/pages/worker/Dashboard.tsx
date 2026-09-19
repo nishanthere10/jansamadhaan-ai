@@ -1,11 +1,28 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Variants } from 'framer-motion';
 import { fetchWithAuth } from '../../lib/api';
 import { StatusBadge } from '../../components/shared/StatusBadge';
-import { LoadingSpinner } from '../../components/shared/LoadingSpinner';
+import { SeverityBadge } from '../../components/shared/SeverityBadge';
 import { EmptyState } from '../../components/shared/EmptyState';
-import { Camera, MapPin, Loader2, CheckCircle, AlertCircle, X, ShieldAlert, BrainCircuit } from 'lucide-react';
+import { ErrorState } from '../../components/shared/ErrorState';
+import { BeforeAfterViewer } from '../../components/shared/BeforeAfterViewer';
+import {
+  Camera,
+  MapPin,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  X,
+  Navigation,
+  BrainCircuit,
+  Clock,
+  ShieldCheck,
+  AlertTriangle,
+  RotateCcw,
+  Check,
+  Calendar,
+} from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import type { Incident, ApiResponse } from '../../types';
 import { useTranslation } from '../../lib/useTranslation';
@@ -17,15 +34,14 @@ import { Textarea } from '../../components/ui/textarea';
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.06, delayChildren: 0.04 } },
 };
 
 const cardVariants: Variants = {
-  hidden: { opacity: 0, y: 15, scale: 0.98 },
-  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
+  hidden: { opacity: 0, y: 12, scale: 0.99 },
+  visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] } },
 };
 
-// ─── Upload proof state per-incident ─────────────────────
 interface ResolutionState {
   notes: string;
   proofUrl: string | null;
@@ -44,14 +60,20 @@ const DEFAULT_RESOLUTION: ResolutionState = {
   resolveError: null,
 };
 
+type SeverityFilter = 'all' | 'critical' | 'high' | 'other';
+
 export default function WorkerDashboard() {
   const user = useAuthStore((s) => s.user);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<string | null>(null);
-  const [verificationNotice, setVerificationNotice] = useState<{ status: string; message: string } | null>(null);
+  const [verificationNotice, setVerificationNotice] = useState<{
+    status: 'verified' | 'rejected' | 'error' | 'pending';
+    message: string;
+  } | null>(null);
   const [resolution, setResolution] = useState<ResolutionState>(DEFAULT_RESOLUTION);
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all');
   const { t } = useTranslation();
 
   const load = async () => {
@@ -63,10 +85,10 @@ export default function WorkerDashboard() {
       if (res.ok && json.success && json.data) {
         setIncidents(json.data);
       } else {
-        setFetchError(json.detail || json.message || 'Failed to load tasks.');
+        setFetchError(json.detail || json.message || 'Failed to load task queue.');
       }
     } catch {
-      setFetchError('Connection error. Please check your network.');
+      setFetchError('Network error. Unable to reach dispatch server.');
     } finally {
       setLoading(false);
     }
@@ -90,13 +112,12 @@ export default function WorkerDashboard() {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
 
-    // Validation
     if (!file.type.startsWith('image/')) {
-      setResolution((r) => ({ ...r, uploadError: 'Only image files are accepted.' }));
+      setResolution((r) => ({ ...r, uploadError: 'Only JPEG/PNG image files are accepted.' }));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setResolution((r) => ({ ...r, uploadError: 'Image must be under 5 MB.' }));
+      setResolution((r) => ({ ...r, uploadError: 'Photo must be under 5 MB.' }));
       return;
     }
 
@@ -107,10 +128,13 @@ export default function WorkerDashboard() {
 
     try {
       if (!activeTask) return;
-      const res = await fetchWithAuth(`/api/v1/incidents/upload?incident_id=${encodeURIComponent(activeTask)}`, {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await fetchWithAuth(
+        `/api/v1/incidents/upload?incident_id=${encodeURIComponent(activeTask)}`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
       const json: ApiResponse<{ image_url: string }> = await res.json();
       if (res.ok && json.success && json.data) {
         setResolution((r) => ({ ...r, proofUrl: json.data!.image_url, uploading: false }));
@@ -125,7 +149,7 @@ export default function WorkerDashboard() {
       setResolution((r) => ({
         ...r,
         uploading: false,
-        uploadError: 'Connection error during upload.',
+        uploadError: 'Connection interrupted while uploading photo.',
       }));
     } finally {
       e.target.value = '';
@@ -146,306 +170,408 @@ export default function WorkerDashboard() {
       });
       const json: ApiResponse<{ verification_status: 'verified' | 'rejected' | 'error' }> = await res.json();
       if (res.ok && json.success && json.data) {
-        setVerificationNotice({ status: json.data.verification_status, message: json.message });
+        setVerificationNotice({
+          status: json.data.verification_status,
+          message: json.message || 'Resolution submitted for municipal verification.',
+        });
         closeTask();
-        load(); // Refresh the queue
+        load();
       } else {
         setResolution((r) => ({
           ...r,
           resolving: false,
-          resolveError: json.detail || json.message || 'Failed to mark as resolved.',
+          resolveError: json.detail || json.message || 'Failed to submit resolution proof.',
         }));
       }
     } catch {
       setResolution((r) => ({
         ...r,
         resolving: false,
-        resolveError: 'Connection error. Please try again.',
+        resolveError: 'Network error submitting resolution.',
       }));
     }
   };
 
-  return (
-    <div className="max-w-3xl mx-auto pb-24">
-      {/* Header - Premium UX4G */}
-      <motion.div
-        className="mb-8 border-b border-slate-200 dark:border-slate-800 pb-6"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <Badge variant="outline" className="mb-2 uppercase tracking-wider text-[10px] font-bold text-slate-600 border-slate-300 bg-slate-100 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700">
-          {t('worker.badge')}
-        </Badge>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 mb-1 flex items-center gap-2">
-           {t('worker.title')}
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 font-medium">
-          {user ? <span className="text-slate-700 dark:text-slate-300 font-semibold">{user.full_name}</span> : ''} · {t('worker.subtitle')}
-        </p>
-      </motion.div>
+  // Severity counts
+  const criticalCount = incidents.filter(
+    (i) => (i.severity === 'critical' || i.ai_severity === 'critical') && i.status !== 'resolved'
+  ).length;
 
+  const highCount = incidents.filter(
+    (i) => (i.severity === 'high' || i.ai_severity === 'high') && i.status !== 'resolved'
+  ).length;
+
+  const otherCount = incidents.filter(
+    (i) =>
+      !['critical', 'high'].includes(i.severity) &&
+      !['critical', 'high'].includes(i.ai_severity || '') &&
+      i.status !== 'resolved'
+  ).length;
+
+  const filteredIncidents = incidents.filter((inc) => {
+    if (severityFilter === 'critical') return inc.severity === 'critical' || inc.ai_severity === 'critical';
+    if (severityFilter === 'high') return inc.severity === 'high' || inc.ai_severity === 'high';
+    if (severityFilter === 'other')
+      return (
+        !['critical', 'high'].includes(inc.severity) &&
+        !['critical', 'high'].includes(inc.ai_severity || '')
+      );
+    return true;
+  });
+
+  return (
+    <div className="max-w-3xl mx-auto pb-24 px-4 sm:px-6">
+      {/* Top Header - Mobile Outdoors High Legibility */}
+      <div className="mb-6 pt-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+        <Badge
+          variant="outline"
+          className="mb-2 uppercase tracking-wider text-[10px] font-bold text-slate-700 border-slate-300 bg-slate-100 dark:bg-slate-800 dark:text-slate-300"
+        >
+          Field Operations
+        </Badge>
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          My Assigned Tasks
+        </h1>
+        <p className="text-slate-500 text-xs sm:text-sm mt-0.5">
+          {user ? <span className="font-semibold text-slate-800 dark:text-slate-200">{user.full_name}</span> : 'Field Worker'} · Municipal Dispatch Console
+        </p>
+      </div>
+
+      {/* Verification Notice Banner */}
       {verificationNotice && (
-        <div role="status" className="mb-6 rounded-lg border p-4">
-          <strong>{verificationNotice.status === 'verified' ? 'Resolution verified' :
-            verificationNotice.status === 'rejected' ? 'Proof rejected — rework required' :
-              'Verification pending — manual review'}</strong>
-          <p>{verificationNotice.message}</p>
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`mb-6 p-4 rounded-xl border flex items-start gap-3 ${
+            verificationNotice.status === 'verified'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200'
+              : verificationNotice.status === 'rejected'
+              ? 'bg-red-50 border-red-200 text-red-900 dark:bg-red-950/40 dark:border-red-800 dark:text-red-200'
+              : 'bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-200'
+          }`}
+        >
+          {verificationNotice.status === 'verified' ? (
+            <ShieldCheck size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+          )}
+          <div className="text-xs space-y-0.5 flex-1">
+            <strong className="block text-sm font-bold">
+              {verificationNotice.status === 'verified'
+                ? 'Resolution Verified by AI Vision'
+                : verificationNotice.status === 'rejected'
+                ? 'Proof Rejected — Further Rework Required'
+                : 'Resolution Logged — Pending Supervisor Sign-off'}
+            </strong>
+            <p className="opacity-90">{verificationNotice.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setVerificationNotice(null)}
+            className="p-1 hover:opacity-75"
+            aria-label="Dismiss notice"
+          >
+            <X size={16} />
+          </button>
+        </motion.div>
+      )}
+
+      {/* Priority Summary Strip per spec §16 */}
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-2 mb-6">
+        <button
+          type="button"
+          onClick={() => setSeverityFilter('all')}
+          className={`p-2 sm:p-3 rounded-xl border text-center transition-all cursor-pointer ${
+            severityFilter === 'all'
+              ? 'border-slate-900 bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-sm'
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+          }`}
+        >
+          <div className="text-base sm:text-lg font-black leading-none">{incidents.length}</div>
+          <div className="text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider mt-1 opacity-80">All</div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSeverityFilter('critical')}
+          className={`p-2 sm:p-3 rounded-xl border text-center transition-all cursor-pointer ${
+            severityFilter === 'critical'
+              ? 'border-red-600 bg-red-600 text-white shadow-sm'
+              : 'border-red-200 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/30 text-red-700 dark:text-red-300'
+          }`}
+        >
+          <div className="text-base sm:text-lg font-black leading-none">{criticalCount}</div>
+          <div className="text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider mt-1">Critical</div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSeverityFilter('high')}
+          className={`p-2 sm:p-3 rounded-xl border text-center transition-all cursor-pointer ${
+            severityFilter === 'high'
+              ? 'border-amber-600 bg-amber-600 text-white shadow-sm'
+              : 'border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300'
+          }`}
+        >
+          <div className="text-base sm:text-lg font-black leading-none">{highCount}</div>
+          <div className="text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider mt-1">High</div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSeverityFilter('other')}
+          className={`p-2 sm:p-3 rounded-xl border text-center transition-all cursor-pointer ${
+            severityFilter === 'other'
+              ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+              : 'border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'
+          }`}
+        >
+          <div className="text-base sm:text-lg font-black leading-none">{otherCount}</div>
+          <div className="text-[9.5px] sm:text-[10px] font-bold uppercase tracking-wider mt-1">Other</div>
+        </button>
+      </div>
+
+      {/* Error state */}
+      {fetchError && !loading && (
+        <div className="mb-6">
+          <ErrorState title="Unable to load tasks" description={fetchError} onRetry={load} />
         </div>
       )}
-      {/* Fetch error */}
-      <AnimatePresence>
-        {fetchError && !loading && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }} 
-            animate={{ opacity: 1, height: 'auto' }} 
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden mb-6"
-          >
-            <div className="flex items-center justify-between p-4 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400 border border-red-100 dark:border-red-900/50 font-medium text-sm">
-              <div className="flex items-center gap-3">
-                <ShieldAlert size={16} className="shrink-0" />
-                <span>{fetchError}</span>
-              </div>
-              <button onClick={load} className="text-xs uppercase font-bold tracking-wider hover:underline underline-offset-2">
-                {t('worker.retryConnection')}
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
+      {/* Loading state */}
       {loading ? (
-        <div className="min-h-[400px] flex items-center justify-center">
-          <LoadingSpinner size="lg" />
+        <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">
+          <Loader2 className="animate-spin text-[var(--cr-authority)]" size={32} />
+          <span className="text-xs font-semibold">Synchronizing field assignments…</span>
         </div>
-      ) : incidents.length === 0 ? (
+      ) : filteredIncidents.length === 0 ? (
         <EmptyState
-          title={t('worker.emptyTitle')}
-          description={t('worker.emptyDesc')}
+          title="No tasks in this category"
+          description="You are currently caught up with your field assignments. Check back later for new municipal dispatches."
         />
       ) : (
         <motion.div
-          className="flex flex-col gap-5"
+          className="space-y-4"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
-          {incidents.map((inc) => (
-            <motion.div key={inc.id} variants={cardVariants}>
-              <Card className="overflow-hidden border-slate-200/80 dark:border-slate-800 shadow-md bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm transition-all">
-                <CardContent className="p-5">
-                  {/* Incident header */}
-                  <div className="flex justify-between items-start gap-2 mb-3">
-                    <Badge variant="secondary" className="font-mono text-xs font-bold text-blue-700 bg-blue-100 border border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800">
-                      {inc.tracking_id}
-                    </Badge>
-                    <StatusBadge status={inc.status} />
-                  </div>
+          {filteredIncidents.map((inc) => {
+            const hasGps = inc.location_lat != null && inc.location_lng != null;
+            const mapsUrl = hasGps
+              ? `https://www.google.com/maps/dir/?api=1&destination=${inc.location_lat},${inc.location_lng}`
+              : null;
+            const isTaskOpen = activeTask === inc.id;
 
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 leading-snug mb-2">
-                    {inc.title}
-                  </h3>
-
-                  {inc.address && (
-                    <div className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400 mb-4 bg-slate-50 dark:bg-slate-950 p-2 rounded-md border border-slate-100 dark:border-slate-800">
-                      <MapPin size={15} className="text-slate-400 dark:text-slate-500 shrink-0" />
-                      <span className="truncate">{inc.address}</span>
-                    </div>
-                  )}
-
-                  {/* Smart Dispatch / AI Context */}
-                  {(inc.ai_department || inc.ai_summary || inc.generated_summary) && (
-                    <div className="mb-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/40 rounded-xl p-3 5">
-                      <h4 className="text-[12px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <BrainCircuit size={14}/> AI Dispatch Notes
-                      </h4>
-                      <div className="space-y-2">
-                        {inc.ai_department && (
-                           <div className="flex items-center gap-2 text-[13px]">
-                             <span className="font-semibold text-slate-600 dark:text-slate-400">Department:</span>
-                             <span className="font-bold text-slate-900 dark:text-slate-200">{inc.ai_department}</span>
-                           </div>
-                        )}
-                        {inc.ai_severity && (
-                           <div className="flex items-center gap-2 text-[13px]">
-                             <span className="font-semibold text-slate-600 dark:text-slate-400">Predicted Risk:</span>
-                             <span className="font-bold text-slate-900 dark:text-slate-200">{inc.ai_severity}</span>
-                           </div>
-                        )}
-                        {(inc.ai_summary || inc.generated_summary) && (
-                           <p className="text-[13px] text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 p-2 rounded-md border border-slate-100 dark:border-slate-800 leading-relaxed italic">
-                             "{inc.ai_summary || inc.generated_summary}"
-                           </p>
-                        )}
+            return (
+              <motion.div key={inc.id} variants={cardVariants}>
+                <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden bg-white dark:bg-slate-900">
+                  <CardContent className="p-5 space-y-4">
+                    {/* Header: Tracking ID + Status & Severity */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <SeverityBadge severity={inc.severity} />
+                        <StatusBadge status={inc.status} />
                       </div>
+                      <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                        {inc.tracking_id}
+                      </span>
                     </div>
-                  )}
 
-                  {/* Resolution panel */}
-                  {inc.status !== 'resolved' && (
-                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                      {activeTask !== inc.id ? (
+                    {/* Problem Title & Location */}
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug">
+                        {inc.title}
+                      </h2>
+                      {inc.address && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1.5 font-medium">
+                          <MapPin size={14} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{inc.address}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Bar: Navigate + Resolve */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {mapsUrl && (
                         <Button
-                          onClick={() => openTask(inc.id)}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold h-11"
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="font-bold text-xs border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300"
                         >
-                          {t('worker.acknowledge')}
+                          <a href={mapsUrl} target="_blank" rel="noopener noreferrer">
+                            <Navigation size={13} className="mr-1.5" />
+                            Navigate to Site
+                          </a>
                         </Button>
-                      ) : (
-                        <motion.div
-                          className="space-y-5 bg-slate-50/50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800"
-                          initial={{ opacity: 0, y: 10, height: 0 }}
-                          animate={{ opacity: 1, y: 0, height: 'auto' }}
-                          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                        >
-                          <div className="space-y-1">
-                            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-200 tracking-tight flex items-center gap-2">
-                              <Camera size={14} className="text-slate-500" /> {t('worker.proofTitle')}
-                            </h4>
-                            <p className="text-xs text-slate-500 font-medium">{t('worker.proofDesc')}</p>
-                          </div>
+                      )}
 
-                          {/* Proof upload area */}
-                          {!resolution.proofUrl ? (
-                            <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all group bg-white dark:bg-slate-900">
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={handleProofUpload}
-                                disabled={resolution.uploading}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                                aria-label="Upload proof of work photo"
-                              />
-                              <div className="flex flex-col items-center gap-3 pointer-events-none text-center text-slate-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                {resolution.uploading ? (
-                                  <Loader2 className="animate-spin text-blue-500" size={36} />
-                                ) : (
-                                  <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-800 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
-                                    <Camera size={28} />
-                                  </div>
-                                )}
-                                <div className="space-y-1">
-                                  <span className="text-[14px] font-bold block">
-                                    {resolution.uploading ? t('worker.processing') : t('worker.tapScan')}
-                                  </span>
-                                  <span className="text-[11px] font-medium opacity-70 block">
-                                    {resolution.uploading ? t('worker.awaitingServer') : t('worker.cameraLaunch')}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500 shadow-sm bg-white dark:bg-slate-900">
-                              <img
-                                src={resolution.proofUrl}
-                                alt="Proof of resolution"
-                                className="w-full h-48 object-cover"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setResolution((r) => ({ ...r, proofUrl: null }))}
-                                className="absolute top-3 right-3 bg-slate-950/70 backdrop-blur-md text-white p-2 rounded-full hover:bg-red-500 transition-colors shadow-sm"
-                                aria-label="Remove proof image"
-                              >
-                                <X size={14} strokeWidth={3} />
-                              </button>
-                              <div className="absolute top-3 left-3 bg-slate-950/70 backdrop-blur-md text-white text-[10px] uppercase font-bold px-2 py-1.5 rounded flex items-center gap-1 shadow-sm tracking-wider">
-                                 <MapPin size={10} className="text-emerald-400"/> {t('worker.gpsLocked')}
-                              </div>
-                              <div className="absolute bottom-0 inset-x-0 bg-emerald-500 backdrop-blur-md text-white text-xs px-3 py-2.5 flex items-center gap-2 font-bold tracking-wide">
-                                <CheckCircle size={16} />
-                                {t('worker.proofUploaded')}
+                      {inc.status !== 'resolved' && (
+                        <Button
+                          variant={isTaskOpen ? 'outline' : 'authority'}
+                          size="sm"
+                          onClick={() => (isTaskOpen ? closeTask() : openTask(inc.id))}
+                          className="font-bold text-xs"
+                        >
+                          {isTaskOpen ? 'Hide Resolution Form' : 'Start Resolution Proof'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* RESOLUTION FLOW (OPEN STATE) */}
+                    <AnimatePresence>
+                      {isTaskOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4"
+                        >
+                          {/* Side-by-side or Before View */}
+                          {inc.image_url && (
+                            <div className="space-y-1.5">
+                              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                Original Citizen Photo (Before)
+                              </span>
+                              <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 max-h-48 bg-slate-950">
+                                <img
+                                  src={inc.image_url}
+                                  alt="Original hazard report"
+                                  className="w-full h-48 object-cover"
+                                />
                               </div>
                             </div>
                           )}
 
-                          {/* Upload error */}
-                          <AnimatePresence>
-                            {resolution.uploadError && (
-                                <motion.p 
-                                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                                  className="text-[13px] text-red-600 font-medium flex items-center gap-1.5 bg-red-50 dark:bg-red-900/20 p-2 rounded-md"
-                                >
-                                <AlertCircle size={14} />
-                                {resolution.uploadError}
-                                </motion.p>
+                          {/* Upload After Proof */}
+                          <div className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                              Resolution Photo Proof (After)
+                            </span>
+
+                            {!resolution.proofUrl ? (
+                              <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 bg-slate-50/60 dark:bg-slate-900/60 transition-colors">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  onChange={handleProofUpload}
+                                  disabled={resolution.uploading}
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                                  aria-label="Upload resolution proof"
+                                />
+                                <div className="flex flex-col items-center gap-2 text-center text-slate-500">
+                                  {resolution.uploading ? (
+                                    <Loader2 className="animate-spin text-emerald-500" size={32} />
+                                  ) : (
+                                    <Camera size={28} className="text-emerald-600" />
+                                  )}
+                                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                    {resolution.uploading ? 'Validating photo upload…' : 'Tap to take resolution photo outdoors'}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">
+                                    GPS geotag will be recorded with proof
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {inc.image_url ? (
+                                  <BeforeAfterViewer
+                                    beforeSrc={inc.image_url}
+                                    afterSrc={resolution.proofUrl}
+                                    beforeLabel="Citizen Before"
+                                    afterLabel="Worker After"
+                                    aiVerified={true}
+                                  />
+                                ) : (
+                                  <div className="relative rounded-xl overflow-hidden border border-emerald-500">
+                                    <img
+                                      src={resolution.proofUrl}
+                                      alt="Proof"
+                                      className="w-full h-48 object-cover"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setResolution((r) => ({ ...r, proofUrl: null }))}
+                                      className="absolute top-2 right-2 p-1.5 rounded-full bg-slate-900/80 text-white hover:bg-red-600"
+                                      aria-label="Remove photo"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             )}
-                          </AnimatePresence>
+
+                            {resolution.uploadError && (
+                              <p className="text-xs text-red-600 font-medium">
+                                {resolution.uploadError}
+                              </p>
+                            )}
+                          </div>
 
                           {/* Notes */}
-                          <div className="space-y-2">
-                             <h4 className="text-[13px] font-bold text-slate-700 dark:text-slate-300">{t('worker.remarks')}</h4>
-                             <Textarea
-                               className="resize-none text-sm bg-white dark:bg-slate-900"
-                               rows={3}
-                               placeholder={t('worker.remarksPlaceholder')}
-                               value={resolution.notes}
-                               onChange={(e) =>
-                                 setResolution((r) => ({ ...r, notes: e.target.value }))
-                               }
-                             />
+                          <div className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                              Worker Remarks / Work Done
+                            </span>
+                            <Textarea
+                              value={resolution.notes}
+                              onChange={(e) => setResolution((r) => ({ ...r, notes: e.target.value }))}
+                              placeholder="E.g., Filled with cold bitumen mix, leveled, and compacted. Surface clear for traffic."
+                              className="text-xs h-20"
+                            />
                           </div>
-                          
 
-                          {/* Resolve error */}
-                          <AnimatePresence>
-                            {resolution.resolveError && (
-                                <motion.p 
-                                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                                  className="text-[13px] text-red-600 font-medium flex items-center gap-1.5 bg-red-50 dark:bg-red-900/20 p-2 rounded-md"
-                                >
-                                <AlertCircle size={14} />
-                                {resolution.resolveError}
-                                </motion.p>
-                            )}
-                          </AnimatePresence>
+                          {resolution.resolveError && (
+                            <p className="text-xs text-red-600 font-medium">
+                              {resolution.resolveError}
+                            </p>
+                          )}
 
-                          {/* Actions */}
-                          <div className="flex gap-3 pt-2">
+                          {/* Submit button */}
+                          <div className="flex gap-2">
                             <Button
                               variant="outline"
-                              className="flex-1 font-semibold"
+                              size="sm"
                               onClick={closeTask}
                               disabled={resolution.resolving}
+                              className="flex-1 font-semibold"
                             >
-                              {t('worker.cancel')}
+                              Cancel
                             </Button>
                             <Button
-                              disabled={!resolution.proofUrl || resolution.resolving || resolution.uploading}
-                              className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                              variant="success"
+                              size="sm"
+                              disabled={
+                                !resolution.proofUrl || resolution.resolving || resolution.uploading
+                              }
                               onClick={() => resolveTask(inc.id)}
+                              className="flex-[2] font-bold"
                             >
                               {resolution.resolving ? (
-                                <span className="flex items-center gap-2">
-                                  <Loader2 className="animate-spin" size={16} />
-                                  {t('worker.submitting')}
-                                </span>
+                                <>
+                                  <Loader2 size={14} className="animate-spin mr-1.5" />
+                                  Submitting for AI Verification…
+                                </>
                               ) : (
-                                <span className="flex items-center gap-2">
-                                  <CheckCircle size={16} />
-                                  {t('worker.transmitClose')}
-                                </span>
+                                <>
+                                  <Check size={14} className="mr-1.5" />
+                                  Transmit Resolution Proof
+                                </>
                               )}
                             </Button>
                           </div>
                         </motion.div>
                       )}
-                    </div>
-                  )}
-
-                  {/* Already resolved */}
-                  {inc.status === 'resolved' && (
-                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-500 font-bold bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
-                      <CheckCircle size={16} />
-                      {t('worker.completed')}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+                    </AnimatePresence>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
         </motion.div>
       )}
     </div>

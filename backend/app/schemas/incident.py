@@ -142,3 +142,19 @@ class IncidentUpdateResponse(BaseModel):
     after_image_url: str | None = None
     created_at: str
 
+
+class IncidentFeedbackRequest(BaseModel):
+    """Citizen feedback or dispute on a resolved incident."""
+    model_config = ConfigDict(extra="ignore")
+
+    rating: int = 5
+    comment: str | None = None
+    is_disputed: bool = False
+
+    @field_validator("rating")
+    @classmethod
+    def validate_rating(cls, v: int) -> int:
+        if v < 1 or v > 5:
+            raise ValueError("rating must be between 1 and 5")
+        return v
+

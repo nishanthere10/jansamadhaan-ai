@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, AlertTriangle, CheckCircle2, Zap, UserCheck, Clock } from 'lucide-react';
 import { StatusBadge } from '../../../components/shared/StatusBadge';
 import { SeverityBadge } from '../../../components/shared/SeverityBadge';
+import { SlaBadge } from './SlaBadge';
 import type { Incident } from '../../../types';
 
 export interface IncidentRowProps {
@@ -121,9 +122,17 @@ export const IncidentRow: React.FC<IncidentRowProps> = ({
           )}
         </td>
         <td className="p-4">
-          <span className="text-[11px] font-medium" style={{ color: timeAgoColor }}>
-            <Clock size={10} className="inline mr-1" />{timeAgo}
-          </span>
+          <div className="flex flex-col gap-1 items-start">
+            <SlaBadge
+              createdAt={inc.created_at}
+              category={inc.category}
+              severity={inc.severity}
+              status={inc.status}
+            />
+            <span className="text-[10px] text-slate-400 font-normal">
+              <Clock size={9} className="inline mr-1" />{timeAgo}
+            </span>
+          </div>
         </td>
         <td className="p-4 text-right">
           <ChevronDown size={18} className={`inline-block text-[var(--cr-text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}/>

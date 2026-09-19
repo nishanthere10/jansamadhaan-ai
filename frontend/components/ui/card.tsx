@@ -1,20 +1,46 @@
 import * as React from "react"
-
+import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
+
+// ── Card elevation variants ────────────────────────────────────────────────
+// flat     → tables / structural containers — no shadow, simple border
+// raised   → KPI cards / important content — shadow + subtle hover lift
+// floating → modal / popover / temporary surfaces — prominent shadow
+const cardVariants = cva(
+  "group/card flex flex-col gap-4 overflow-hidden rounded-xl bg-card text-sm text-card-foreground has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+  {
+    variants: {
+      elevation: {
+        flat: "border border-[var(--cr-border)] py-4",
+        raised:
+          "border border-[var(--cr-border)] py-4 shadow-[var(--cr-shadow)] transition-[box-shadow,transform] duration-[var(--motion-base)] ease-[var(--ease-standard)] hover:shadow-[var(--cr-shadow-md)] hover:-translate-y-0.5",
+        floating:
+          "border border-[var(--cr-border-strong)] py-4 shadow-[var(--cr-shadow-lg)]",
+      },
+      size: {
+        default: "gap-4 py-4",
+        sm: "gap-3 py-3",
+      },
+    },
+    defaultVariants: {
+      elevation: "raised",
+      size: "default",
+    },
+  }
+)
 
 function Card({
   className,
-  size = "default",
+  elevation,
+  size,
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & VariantProps<typeof cardVariants>) {
   return (
     <div
       data-slot="card"
+      data-elevation={elevation}
       data-size={size}
-      className={cn(
-        "group/card flex flex-col gap-4 overflow-hidden rounded-xl bg-card py-4 text-sm text-card-foreground ring-1 ring-foreground/10 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
-        className
-      )}
+      className={cn(cardVariants({ elevation, size }), className)}
       {...props}
     />
   )
@@ -38,7 +64,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-title"
       className={cn(
-        "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
+        "font-heading text-base leading-snug font-semibold group-data-[size=sm]/card:text-sm",
         className
       )}
       {...props}
@@ -94,6 +120,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 export {
   Card,
+  cardVariants,
   CardHeader,
   CardFooter,
   CardTitle,

@@ -1,24 +1,51 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { fetchWithAuth } from '../../../lib/api';
 import { toast } from 'sonner';
 import type { Incident, IncidentUpdate } from '../../../types';
+import { calculateSlaStatus } from '../../../lib/sla';
+import type { AuthorityViewMode } from '../components/DashboardFilters';
 
 export function useDashboardState() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [incidentUpdates, setIncidentUpdates] = useState<Record<string, IncidentUpdate[]>>({});
-  const [workers, setWorkers] = useState<{id: string, full_name: string, department?: string}[]>([]);
+  const [workers, setWorkers] = useState<{ id: string; full_name: string; department?: string; phone_number?: string }[]>([]);
   const [reprocessingIds, setReprocessingIds] = useState<Set<string>>(new Set());
   
+  // View & Filter modes
+  const [viewMode, setViewModeState] = useState<AuthorityViewMode>(() => {
+    return (localStorage.getItem('cr_authority_view_mode') as AuthorityViewMode) || 'table';
+  });
   const [filterRisk, setFilterRisk] = useState<string>('all');
   const [filterDept, setFilterDept] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterSla, setFilterSla] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [confirmAssign, setConfirmAssign] = useState<{incidentId: string, workerId: string} | null>(null);
+  const [confirmAssign, setConfirmAssign] = useState<{ incidentId: string; workerId: string } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const setViewMode = (mode: AuthorityViewMode) => {
+    setViewModeState(mode);
+    try {
+      localStorage.setItem('cr_authority_view_mode', mode);
+    } catch {
+      // ignore
+    }
+  };
+
+  // ── Worker Workload Map ─────────────────────────────────────
+  const workerWorkloads = useMemo(() => {
+    const loads: Record<string, number> = {};
+    incidents.forEach(inc => {
+      if (inc.assigned_to && inc.status !== 'resolved' && inc.status !== 'rejected') {
+        loads[inc.assigned_to] = (loads[inc.assigned_to] || 0) + 1;
+      }
+    });
+    return loads;
+  }, [incidents]);
 
   // ── Data Loading ─────────────────────────────────────────
   const load = useCallback(async () => {
@@ -58,15 +85,29 @@ export function useDashboardState() {
       i => i.ai_processing_status === 'processing' || i.ai_processing_status === 'pending'
     ) || reprocessingIds.size > 0;
 
+    const tick = () => {
+      if (document.visibilityState === 'visible') {
+        load();
+      }
+    };
+
     if (hasProcessing) {
-      pollingRef.current = setInterval(load, 8000);
+      pollingRef.current = setInterval(tick, 8000);
     } else if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && hasProcessing) {
+        load();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [incidents, reprocessingIds, load]);
 
@@ -110,6 +151,26 @@ export function useDashboardState() {
     }
   };
 
+  const updateIncidentStatus = async (incidentId: string, status: string, note?: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/v1/incidents/${incidentId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status, note }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setIncidents((prev) =>
+          prev.map((inc) => (inc.id === incidentId ? { ...inc, status: status as any } : inc))
+        );
+        toast.success(`Incident marked as ${status.toUpperCase()}`);
+      } else {
+        toast.error(json.message || 'Status update failed');
+      }
+    } catch {
+      toast.error('Network error during status update');
+    }
+  };
+
   const acceptAiTriage = async (incident: Incident) => {
     const payload: Record<string, string> = {};
     if (incident.ai_category) payload.category = incident.ai_category;
@@ -136,6 +197,39 @@ export function useDashboardState() {
       }
     } catch {
       toast.error('Failed to communicate with server');
+    }
+  };
+
+  // 1-Click Fast-Track AI Dispatch
+  const fastTrackDispatch = async (incident: Incident, overrideWorkerId?: string) => {
+    try {
+      // 1. Determine Worker
+      let targetWorker = workers.find(w => w.id === overrideWorkerId);
+      if (!targetWorker) {
+        const targetDept = (incident.ai_department || incident.category || '').toLowerCase();
+        const deptWorkers = workers.filter(w => 
+          (w.department || '').toLowerCase().includes(targetDept) || targetDept.includes((w.department || '').toLowerCase())
+        );
+        const pool = deptWorkers.length ? deptWorkers : workers;
+        targetWorker = [...pool].sort((a, b) => (workerWorkloads[a.id] || 0) - (workerWorkloads[b.id] || 0))[0];
+      }
+
+      if (!targetWorker) {
+        toast.error('No field workers available to dispatch.');
+        return;
+      }
+
+      // 2. Accept AI Triage
+      await acceptAiTriage(incident);
+
+      // 3. Assign Worker
+      await assignWorker(incident.id, targetWorker.id);
+
+      toast.success(`⚡ Dispatched #${incident.tracking_id || incident.id.slice(0, 8)} to ${targetWorker.full_name}!`);
+      load();
+    } catch (err) {
+      console.error('Fast-track dispatch failed:', err);
+      toast.error('Fast-track dispatch failed');
     }
   };
 
@@ -199,10 +293,66 @@ export function useDashboardState() {
     setFilterRisk('all');
     setFilterDept('all');
     setFilterStatus('all');
+    setFilterSla('all');
     setSearchQuery('');
   };
 
-  const filtersActive = filterRisk !== 'all' || filterDept !== 'all' || filterStatus !== 'all' || searchQuery !== '';
+  // ── CSV Export for Municipal Review Meetings ──────────────
+  const exportIncidentsCsv = () => {
+    if (!filteredIncidents.length) {
+      toast.error('No incidents to export');
+      return;
+    }
+
+    const headers = [
+      'Tracking ID',
+      'Title',
+      'Category',
+      'Severity',
+      'Status',
+      'SLA Status',
+      'Hours Remaining',
+      'Assigned Worker',
+      'Department',
+      'Address',
+      'Reported Date',
+    ];
+
+    const rows = filteredIncidents.map(i => {
+      const sla = calculateSlaStatus(i.created_at, i.category, i.severity, i.status);
+      const worker = workers.find(w => w.id === i.assigned_to)?.full_name || 'Unassigned';
+      const formattedDate = i.created_at && !isNaN(new Date(i.created_at).getTime()) 
+        ? new Date(i.created_at).toISOString() 
+        : 'N/A';
+
+      return [
+        `"${i.tracking_id || i.id}"`,
+        `"${(i.title || i.generated_title || '').replace(/"/g, '""')}"`,
+        `"${i.category || ''}"`,
+        `"${i.severity || ''}"`,
+        `"${i.status || ''}"`,
+        `"${sla.label}"`,
+        `"${sla.hoursRemaining}"`,
+        `"${worker}"`,
+        `"${i.ai_department || ''}"`,
+        `"${(i.address || '').replace(/"/g, '""')}"`,
+        `"${formattedDate}"`,
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `jan_samadhan_review_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${filteredIncidents.length} incidents to CSV`);
+  };
+
+  const filtersActive = filterRisk !== 'all' || filterDept !== 'all' || filterStatus !== 'all' || filterSla !== 'all' || searchQuery !== '';
 
   // ── Helpers ──────────────────────────────────────────────
   const isAiPending = useCallback((inc: Incident) =>
@@ -214,12 +364,15 @@ export function useDashboardState() {
   );
   
   const isAiDone = useCallback((inc: Incident) =>
-    inc.ai_processing_status === 'completed', []
+    inc.ai_processing_status === 'completed' && !reprocessingIds.has(inc.id), [reprocessingIds]
   );
 
-  const timeAgo = (dateStr: string) => {
-    const min = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
-    if (min < 1) return 'just now';
+  const timeAgo = (iso?: string | null) => {
+    if (!iso) return 'Just now';
+    const parsed = new Date(iso).getTime();
+    if (isNaN(parsed)) return 'Just now';
+    const min = Math.floor((Date.now() - parsed) / 60000);
+    if (min < 1) return 'Just now';
     if (min < 60) return `${min}m ago`;
     const hrs = Math.floor(min / 60);
     if (hrs < 24) return `${hrs}h ago`;
@@ -228,7 +381,9 @@ export function useDashboardState() {
 
   const timeAgoColor = (inc: Incident) => {
     if (inc.status === 'resolved' || inc.status === 'rejected') return 'var(--cr-text-muted)';
-    const hrs = (Date.now() - new Date(inc.created_at).getTime()) / 3600000;
+    const parsed = new Date(inc.created_at).getTime();
+    if (isNaN(parsed)) return 'var(--cr-text-muted)';
+    const hrs = (Date.now() - parsed) / 3600000;
     if (hrs > 24) return 'var(--cr-red)';
     if (hrs > 6) return 'var(--cr-amber)';
     return 'var(--cr-text-muted)';
@@ -246,6 +401,17 @@ export function useDashboardState() {
         const searchable = `${inc.tracking_id} ${inc.title} ${inc.description} ${inc.address || ''}`.toLowerCase();
         if (!searchable.includes(q)) return false;
       }
+
+      // SLA Quick filter
+      if (filterSla !== 'all') {
+        const sla = calculateSlaStatus(inc.created_at, inc.category, inc.severity, inc.status);
+        if (filterSla === 'breached' && (!sla.isBreached && !sla.isExpiringSoon)) return false;
+        if (filterSla === 'breached' && (inc.status === 'resolved' || inc.status === 'rejected')) return false;
+        if (filterSla === 'unassigned' && (inc.assigned_to || inc.status === 'resolved' || inc.status === 'rejected')) return false;
+        if (filterSla === 'ai_review' && (inc.ai_processing_status !== 'completed' || inc.status === 'resolved' || inc.status === 'rejected')) return false;
+        if (filterSla === 'resolved' && inc.status !== 'resolved') return false;
+      }
+
       if (filterRisk !== 'all') {
         const incRisk = (inc.ai_severity || inc.severity || '').toLowerCase();
         if (filterRisk === 'emergency' && !incRisk.includes('emergency') && !incRisk.includes('critical')) return false;
@@ -259,13 +425,22 @@ export function useDashboardState() {
         if (normInc !== normFilter) return false;
       }
       if (filterDept !== 'all') {
-        const dept = (inc.ai_department || 'unassigned').toLowerCase();
-        if (filterDept === 'unassigned' && inc.ai_department) return false;
-        if (filterDept !== 'unassigned' && dept !== filterDept) return false;
+        const dept = (inc.ai_department || 'unassigned').toLowerCase().trim();
+        const target = filterDept.toLowerCase().trim();
+        if (target === 'unassigned' && inc.ai_department) return false;
+        if (target !== 'unassigned' && dept !== target) return false;
       }
       return true;
     })
     .sort((a, b) => {
+      // Prioritize breached and critical SLAs
+      const slaA = calculateSlaStatus(a.created_at, a.category, a.severity, a.status);
+      const slaB = calculateSlaStatus(b.created_at, b.category, b.severity, b.status);
+      if (slaA.isBreached && !slaB.isBreached) return -1;
+      if (!slaA.isBreached && slaB.isBreached) return 1;
+      if (slaA.isExpiringSoon && !slaB.isExpiringSoon) return -1;
+      if (!slaA.isExpiringSoon && slaB.isExpiringSoon) return 1;
+
       if (!isAiDone(a) && isAiDone(b)) return -1;
       if (isAiDone(a) && !isAiDone(b)) return 1;
       const dupA = a.duplicate_count || 0;
@@ -275,6 +450,19 @@ export function useDashboardState() {
     });
 
   const uniqueDepartments = Array.from(new Set(incidents.map(i => i.ai_department).filter(Boolean))) as string[];
+
+  // Counts for Attention Strip & Filters
+  const slaBreachedCount = useMemo(() => {
+    return incidents.filter(i => {
+      if (i.status === 'resolved' || i.status === 'rejected') return false;
+      const sla = calculateSlaStatus(i.created_at, i.category, i.severity, i.status);
+      return sla.isBreached || sla.isExpiringSoon;
+    }).length;
+  }, [incidents]);
+
+  const unassignedCount = useMemo(() => {
+    return incidents.filter(i => !i.assigned_to && i.status !== 'resolved' && i.status !== 'rejected').length;
+  }, [incidents]);
 
   const counts = {
     total: filtersActive ? `${filteredIncidents.length} of ${incidents.length}` : `${incidents.length}`,
@@ -292,15 +480,17 @@ export function useDashboardState() {
     state: {
       incidents, filteredIncidents, loading, expandedId, incidentUpdates,
       workers, reprocessingIds, filterRisk, filterDept, filterStatus,
-      searchQuery, selectedIds, confirmAssign,
-      filtersActive, uniqueDepartments, counts
+      filterSla, viewMode, searchQuery, selectedIds, confirmAssign,
+      filtersActive, uniqueDepartments, counts, workerWorkloads,
+      slaBreachedCount, unassignedCount,
     },
     actions: {
-      setFilterRisk, setFilterDept, setFilterStatus, setSearchQuery,
+      setFilterRisk, setFilterDept, setFilterStatus, setFilterSla,
+      setViewMode, setSearchQuery, setExpandedId,
       setConfirmAssign, setSelectedIds,
-      load, handleExpand, assignWorker, acceptAiTriage, reprocessAI,
-      toggleSelect, toggleSelectAll, batchAcceptTriage, batchAssignWorker,
-      resetFilters
+      load, handleExpand, assignWorker, updateIncidentStatus, acceptAiTriage, fastTrackDispatch,
+      reprocessAI, toggleSelect, toggleSelectAll, batchAcceptTriage, batchAssignWorker,
+      resetFilters, exportIncidentsCsv,
     },
     helpers: {
       timeAgo, timeAgoColor, workerName, isAiPending, isAiFailed, isAiDone

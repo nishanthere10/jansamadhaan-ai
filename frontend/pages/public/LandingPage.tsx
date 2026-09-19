@@ -296,10 +296,10 @@ export default function LandingPage() {
               </AnimatePresence>
             </div>
 
-            <NavLink to="/login" className="cr-btn cr-btn-secondary text-[13px] py-2 px-4">
+            <NavLink to="/login" className="cr-btn cr-btn-secondary text-[12px] sm:text-[13px] py-1.5 sm:py-2 px-2.5 sm:px-4">
               {t('landing.signIn')}
             </NavLink>
-            <NavLink to="/signup" className="cr-btn cr-btn-primary text-[13px] py-2 px-4">
+            <NavLink to="/signup" className="cr-btn cr-btn-primary text-[12px] sm:text-[13px] py-1.5 sm:py-2 px-3 sm:px-4 whitespace-nowrap">
               {t('landing.getStarted')}
             </NavLink>
           </div>
@@ -369,7 +369,7 @@ export default function LandingPage() {
                 variants={fadeUp}
                 initial="hidden"
                 animate="visible"
-                className="text-[42px] sm:text-[52px] font-black leading-[1.05] tracking-tight mb-6"
+                className="text-[32px] sm:text-[44px] lg:text-[54px] font-black leading-[1.1] sm:leading-[1.05] tracking-tight mb-6"
                 style={{ fontFamily: "'DM Sans', sans-serif" }}
               >
                 {t('landing.heroTitle1')}
@@ -384,7 +384,7 @@ export default function LandingPage() {
                 variants={fadeUp}
                 initial="hidden"
                 animate="visible"
-                className="text-[16px] text-[var(--cr-text-secondary)] leading-relaxed mb-8 max-w-lg"
+                className="text-[15px] sm:text-[16px] text-[var(--cr-text-secondary)] leading-relaxed mb-8 max-w-lg"
               >
                 {t('landing.heroSubtitle')}
               </motion.p>
@@ -395,11 +395,11 @@ export default function LandingPage() {
                 variants={fadeUp}
                 initial="hidden"
                 animate="visible"
-                className="flex flex-wrap gap-3 mb-10"
+                className="flex flex-col sm:flex-row gap-3 mb-10 w-full sm:w-auto"
               >
                 <NavLink
                   to="/signup"
-                  className="cr-btn cr-btn-primary text-[15px] px-6 py-3 shadow-xl"
+                  className="cr-btn cr-btn-primary text-[15px] px-6 py-3 shadow-xl justify-center text-center"
                   style={{ boxShadow: '0 4px 24px rgba(0,85,164,0.30)' }}
                 >
                   <MapPin size={16} />
@@ -408,7 +408,7 @@ export default function LandingPage() {
                 </NavLink>
                 <NavLink
                   to="/login"
-                  className="cr-btn cr-btn-secondary text-[15px] px-6 py-3"
+                  className="cr-btn cr-btn-secondary text-[15px] px-6 py-3 justify-center text-center"
                 >
                   {t('landing.signInDashboard')}
                 </NavLink>

@@ -31,7 +31,7 @@ export function Navbar() {
   useEffect(() => {
     async function loadNotifications() {
       try {
-        if (!user) return;
+        if (!user || document.visibilityState === 'hidden') return;
         const res = await fetchWithAuth('/api/v1/notifications');
         const json = await res.json();
         if (json.success) {
@@ -41,9 +41,21 @@ export function Navbar() {
         console.error('Failed to load notifications in Navbar', err);
       }
     }
+
     loadNotifications();
-    const interval = setInterval(loadNotifications, 30000); // Pool every 30s
-    return () => clearInterval(interval);
+    const interval = setInterval(loadNotifications, 30000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadNotifications();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [user]);
 
   const markAsRead = async (id: string) => {
@@ -131,13 +143,13 @@ export function Navbar() {
         {/* Brand mark */}
         <NavLink
           to="/dashboard"
-          className="hidden sm:flex items-center gap-2 text-decoration-none group"
+          className="flex items-center gap-2 text-decoration-none group"
         >
-          <div className="w-7 h-7 rounded-sm overflow-hidden flex items-center justify-center shadow-sm relative">
+          <div className="w-7 h-7 rounded-sm overflow-hidden flex items-center justify-center shadow-sm relative shrink-0">
             <img src="/logo1.jpg" alt="Jan Samadhan" className="w-full h-full object-contain" />
           </div>
           <span
-            className="text-[13.5px] font-bold text-[var(--cr-text)] tracking-tight"
+            className="text-[13.5px] font-bold text-[var(--cr-text)] tracking-tight hidden sm:inline"
             style={{ fontFamily: "'DM Sans', sans-serif" }}
           >
             Jan<span className="text-[var(--cr-orange)]"> Samadhan</span>
@@ -221,7 +233,7 @@ export function Navbar() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -4 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="absolute right-0 top-full mt-2 w-48 cr-card p-1.5 z-50"
+                className="absolute right-0 top-full mt-2 w-48 max-w-[calc(100vw-1rem)] cr-card p-1.5 z-50"
                 style={{ boxShadow: 'var(--cr-shadow-lg)' }}
               >
                 <div className="px-3 py-2 border-b border-[var(--cr-divider)] mb-1">
@@ -269,7 +281,7 @@ export function Navbar() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -4 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="absolute right-0 top-full mt-2 w-72 cr-card p-0 z-50 overflow-hidden"
+                className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-1rem)] cr-card p-0 z-50 overflow-hidden"
                 style={{ boxShadow: 'var(--cr-shadow-lg)' }}
               >
                 <div className="px-4 py-3 border-b border-[var(--cr-divider)] bg-[var(--cr-bg-offset)] flex justify-between items-center">
@@ -347,7 +359,7 @@ export function Navbar() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -4 }}
                 transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="absolute right-0 top-full mt-2 w-56 cr-card p-1.5 z-50"
+                className="absolute right-0 top-full mt-2 w-56 max-w-[calc(100vw-1rem)] cr-card p-1.5 z-50"
                 style={{ boxShadow: 'var(--cr-shadow-lg)' }}
               >
                 {/* User info header */}

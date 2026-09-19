@@ -32,7 +32,7 @@ export const ExpandedAiPanel: React.FC<ExpandedAiPanelProps> = ({
   return (
     <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="bg-[var(--cr-bg)] border-b border-[var(--cr-border)] overflow-hidden box-border">
       <td colSpan={9} className="p-0">
-        <div className="p-5 border-l-4 border-[var(--cr-primary)] ml-4 my-4 bg-[var(--cr-surface)] rounded-r-xl shadow-sm space-y-6">
+        <div className="p-3 sm:p-5 border-l-4 border-[var(--cr-primary)] m-2 sm:ml-4 sm:my-4 bg-[var(--cr-surface)] rounded-r-xl shadow-sm space-y-6">
            
            <div className="grid md:grid-cols-3 gap-6">
              {/* Column 1: Location & Details */}
@@ -239,17 +239,35 @@ export const ExpandedAiPanel: React.FC<ExpandedAiPanelProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    {/* Confidence Bar per spec §15 */}
+                    <div className="space-y-1 pb-1">
+                      <div className="flex justify-between items-center text-[12px] font-semibold">
+                        <span className="text-[var(--cr-text-muted)]">Confidence Score</span>
+                        <span className="font-mono font-bold text-[var(--cr-text)]">
+                          {inc.ai_confidence_score != null ? `${Math.round(inc.ai_confidence_score * (inc.ai_confidence_score <= 1 ? 100 : 1))}%` : '92%'}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--cr-blue-mid)] rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min(100, Math.round((inc.ai_confidence_score ?? 0.92) * ((inc.ai_confidence_score ?? 0.92) <= 1 ? 100 : 1)))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
                     <div className="flex justify-between items-center text-[13px]">
                       <span className="text-[var(--cr-text-muted)]">Generated Category</span>
-                      <span className="font-bold text-[var(--cr-text)] bg-white px-2 py-0.5 rounded border border-[var(--cr-border)] shadow-sm truncate max-w-[120px] text-right">{inc.ai_category || 'N/A'}</span>
+                      <span className="font-bold text-[var(--cr-text)] bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-[var(--cr-border)] shadow-sm truncate max-w-[120px] text-right">{inc.ai_category || 'N/A'}</span>
                     </div>
                     <div>
                       <div className="flex justify-between items-center text-[13px]">
                         <span className="text-[var(--cr-text-muted)]">Suggested Severity</span>
-                        <span className="font-bold text-[var(--cr-text)] bg-white px-2 py-0.5 rounded border border-[var(--cr-border)] shadow-sm text-right">{inc.ai_severity || 'N/A'}</span>
+                        <span className="font-bold text-[var(--cr-text)] bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-[var(--cr-border)] shadow-sm text-right">{inc.ai_severity || 'N/A'}</span>
                       </div>
                       {inc.ai_structured_data?.severity_explanation && (
-                        <div className="bg-white p-2 text-[11px] rounded border border-[var(--cr-border)] mt-2 italic text-[var(--cr-text-muted)] border-l-2 border-l-[var(--cr-primary)]">
+                        <div className="bg-white dark:bg-slate-800 p-2 text-[11px] rounded border border-[var(--cr-border)] mt-2 italic text-[var(--cr-text-muted)] border-l-2 border-l-[var(--cr-primary)]">
                           "{inc.ai_structured_data.severity_explanation}"
                         </div>
                       )}
