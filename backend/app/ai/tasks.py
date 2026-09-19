@@ -238,6 +238,13 @@ async def process_incident_ai_background(
             citizen_id = row.get("citizen_id")
             label = row.get("tracking_id") or incident_id
 
+            if citizen_id:
+                try:
+                    from app.ai.services.trust_scoring_service import TrustScoringService
+                    await TrustScoringService.process({"citizen_id": citizen_id})
+                except Exception as trust_err:
+                    logger.warning(f"Failed to update trust score for {citizen_id}: {trust_err}")
+
             if ai_status == "completed" and citizen_id and final_state.get("category"):
                 routing = final_state.get("primary_department") or "the concerned department"
                 NotificationService.create_notification(
@@ -271,7 +278,7 @@ async def process_incident_ai_background(
                     f"linked to cluster {cluster_meta['cluster_id']}.",
                 )
         except Exception as notify_err:
-            logger.warning(f"Notification step failed for {incident_id}: {notify_err}")
+            logger.warning(f"Notification or Trust Scoring step failed for {incident_id}: {notify_err}")
 
     except Exception as e:
         logger.exception(f"Failed AI Background Processing for {incident_id}: {str(e)}")

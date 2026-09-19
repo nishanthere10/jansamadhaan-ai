@@ -14,6 +14,16 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          leaflet: ['leaflet', 'react-leaflet', 'leaflet.heat'],
+          recharts: ['recharts'],
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     host: true,

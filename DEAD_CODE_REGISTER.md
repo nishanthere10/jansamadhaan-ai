@@ -120,6 +120,8 @@ genuinely imposing were re-declared by us in `frontend/index.css` under
 See `frontend/public/css/README.md` for the re-enable procedure and the
 "never bridge `--bs-*` into `--cr-*`" policy.
 
+**Final Decision (2026-09-20):** We are permanently retaining the `UX4G CONTINUITY TOKENS` (e.g. `--spacing-4 = 1.5rem`). Migrating entirely to native Tailwind scaling would require thousands of manual regression checks across the app layout with minimal end-user benefit.
+
 ## Backend (audit COMPLETE — 2026-09-17)
 
 Static pass finished: vulture (`app vulture_whitelist.py --min-confidence 60`) is
@@ -140,7 +142,6 @@ clean, ruff (`ruff.toml`: E4/E7/E9/F/I/B/UP) is clean, pytest 49/49 green.
 | `app/whatsapp_ai/services/whatsapp_confirmation_service.py` | outbound citizen confirmations, unwired | **KEEP + REGISTER** — Phase-19 roadmap item |
 | `app/whatsapp_ai/services/whatsapp_incident_mapper.py` + `schemas/structured_incident_schema.py` | canonical-payload mapping | **KEEP + REGISTER** |
 | `app/whatsapp_ai/schemas/twilio_payload_schema.py` | documents the Twilio form contract | **KEEP** (contract doc) |
-| `app/ai/services/trust_scoring_service.py` | fully implemented, tested (`test_schema_gotchas.py`), never invoked by pipeline/API | **KEEP + REGISTER** — Phase-19 roadmap item |
 | `app/ai/services/duplicate_detection_service.py::GEO_RADIUS_METERS` | tuning constant, referenced in comments only | **KEEP + REGISTER** — review at duplicate-detection tuning |
 | `whatsapp_session_manager.py::get_session_data` | alternate accessor; live flow uses `get_session` | **KEEP + REGISTER** — review next backend pass |
 | `ai_response_models.py::TranscriptionResponse / VisionAnalysisResponse`; `schemas/auth.py` response models; `schemas/incident.py` response models | complete API contracts, ready for `response_model=` | **KEEP** — API contracts |
