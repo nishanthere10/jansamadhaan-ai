@@ -57,5 +57,12 @@ graphify-out/
 # Local audit and scratch reports (preserved locally, deliberately uncommitted)
 report.md
 
+# Test / debug run artifacts. pytest_output.txt captured live HTTP/2 headers
+# (including a Supabase apikey) at DEBUG level, so it must never be committed.
+pytest_output.txt
+**/pytest_output.txt
+backend/tests/outputs/*.txt
+pip*.log
+
 # Stale root node_modules (left from restructure)
 /node_modules/
