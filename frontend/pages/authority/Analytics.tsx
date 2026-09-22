@@ -61,6 +61,7 @@ const STATUS_COLORS: Record<string, string> = {
   'in-progress': '#0055A4',
   in_progress:   '#0055A4',
   resolved:      '#1A7A3E',
+  closed:        '#64748B',
   rejected:      '#B91C1C',
 };
 

@@ -29,7 +29,10 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        // Must match the documented backend port (README, setup.md,
+        // backend/.env.example all use 8001). This previously pointed at 8000,
+        // so every dev API call failed with a proxy error.
+        target: 'http://127.0.0.1:8001',
         changeOrigin: true,
       },
     },

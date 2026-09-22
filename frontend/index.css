@@ -684,6 +684,7 @@ textarea.cr-input { resize: vertical; min-height: 100px; }
 .cr-badge-assigned  { background-color: var(--cr-blue-light);  color: var(--cr-blue-mid); }
 .cr-badge-progress  { background-color: rgba(14,165,233,0.10); color: #0369A1; }
 .cr-badge-resolved  { background-color: var(--cr-green-light); color: var(--cr-green); }
+.cr-badge-closed    { background-color: rgba(100,116,139,0.12); color: #475569; }
 .cr-badge-rejected  { background-color: var(--cr-red-light);   color: var(--cr-red); }
 .cr-badge-low       { background-color: var(--cr-green-light); color: var(--cr-green); }
 .cr-badge-medium    { background-color: var(--cr-amber-light); color: var(--cr-amber); }

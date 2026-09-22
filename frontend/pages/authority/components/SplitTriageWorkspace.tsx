@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import type { Incident, IncidentUpdate } from '../../../types';
 import { SlaBadge } from './SlaBadge';
 import { SeverityBadge } from '../../../components/shared/SeverityBadge';
-import { StatusBadge } from '../../../components/shared/StatusBadge';
+import { StatusBadge, statusLabel } from '../../../components/shared/StatusBadge';
 
 interface SplitTriageWorkspaceProps {
   incidents: Incident[];
@@ -564,7 +564,7 @@ export const SplitTriageWorkspace: React.FC<SplitTriageWorkspaceProps> = ({
                             <div className="absolute -left-[31px] top-0.5 w-3 h-3 rounded-full bg-blue-600 border-2 border-white dark:border-slate-900" />
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                {update.status_changed_to ? `Status changed to ${update.status_changed_to}` : 'Incident Update'}
+                                {update.status ? `Status changed to ${statusLabel(update.status)}` : 'Incident Update'}
                               </span>
                               <span className="text-[11px] text-slate-400">
                                 {new Date(update.created_at).toLocaleDateString()}

@@ -10,7 +10,8 @@ export type IncidentStatus =
   | 'assigned'
   | 'in-progress'
   | 'resolved'
-  | 'rejected';
+  | 'rejected'
+  | 'closed';
 
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
 
@@ -130,6 +131,45 @@ export interface Notification {
   message: string;
   is_read: boolean;
   created_at: string;
+}
+
+// ─── Public Tracking (unauthenticated) ────────────────────
+// Mirrors PublicTrackingResponse in backend/app/schemas/incident.py.
+// This is an anonymous-visitor payload: no PII fields exist on it by design.
+
+export type SlaState =
+  | 'MET'
+  | 'CLOSED'
+  | 'BREACHED'
+  | 'EXPIRING SOON'
+  | 'ON TRACK'
+  | 'UNKNOWN';
+
+export interface PublicTrackingEvent {
+  status: string;
+  time: string;
+  note?: string | null;
+}
+
+export interface PublicTracking {
+  tracking_id: string;
+  title: string;
+  description?: string | null;
+  category: string;
+  severity: string;
+  status: string;
+  department?: string | null;
+  location_label?: string | null;
+  source?: string | null;
+  created_at: string;
+  sla_state?: SlaState | null;
+  sla_due_at?: string | null;
+  sla_hours?: number | null;
+  citizen_visible_timeline: PublicTrackingEvent[];
+  image_url?: string | null;
+  resolution_image?: string | null;
+  verification_status?: 'verified' | 'rejected' | 'error' | 'pending' | null;
+  verification_score?: number | null;
 }
 
 // ─── Dashboard Stats ──────────────────────────────────────

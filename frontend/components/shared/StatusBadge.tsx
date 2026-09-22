@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Loader2, UserCheck, XCircle, ShieldCheck } from 'lucide-react';
+import { Archive, CheckCircle2, Clock, Loader2, UserCheck, XCircle, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface StatusConfig {
@@ -23,10 +23,20 @@ const statusMap: Record<string, StatusConfig> = {
     className: 'cr-badge cr-badge-progress',
     icon: <Loader2 size={10} strokeWidth={2.5} className="animate-spin" aria-hidden />,
   },
+  in_progress: {
+    label: 'In Progress',
+    className: 'cr-badge cr-badge-progress',
+    icon: <Loader2 size={10} strokeWidth={2.5} className="animate-spin" aria-hidden />,
+  },
   resolved: {
     label: 'Resolved',
     className: 'cr-badge cr-badge-resolved',
     icon: <CheckCircle2 size={10} strokeWidth={2.5} aria-hidden />,
+  },
+  closed: {
+    label: 'Closed',
+    className: 'cr-badge cr-badge-closed',
+    icon: <Archive size={10} strokeWidth={2.5} aria-hidden />,
   },
   rejected: {
     label: 'Rejected',
@@ -40,14 +50,31 @@ const statusMap: Record<string, StatusConfig> = {
   },
 };
 
+/**
+ * Human-readable label for any status value, safe for unknown input.
+ *
+ * Shared with the authority timeline so the badge and the timeline text can
+ * never disagree about wording.
+ */
+export function statusLabel(status: string | null | undefined): string {
+  if (!status) return 'Unknown';
+  const key = String(status).toLowerCase().trim();
+  const known = statusMap[key];
+  if (known) return known.label;
+  // Unknown status: render a readable Title Case form instead of leaking a
+  // raw snake_case enum value into the UI.
+  return key.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 interface StatusBadgeProps {
   status: string;
   className?: string;
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const config = statusMap[status] ?? {
-    label: status,
+  const key = String(status ?? '').toLowerCase().trim();
+  const config = statusMap[key] ?? {
+    label: statusLabel(status),
     className: 'cr-badge cr-badge-pending',
     icon: <Clock size={10} strokeWidth={2.5} aria-hidden />,
   };

@@ -1,29 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   HardHat,
   Info,
   ExternalLink,
   Share2,
-  CheckCircle2,
   MapPin,
   Calendar,
   Building,
   ShieldCheck,
+  ShieldAlert,
+  Search,
   Check,
   ArrowLeft,
+  ImageOff,
 } from 'lucide-react';
 import { LoadingSpinner } from '../../components/shared/LoadingSpinner';
 import { EmptyState } from '../../components/shared/EmptyState';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import { SeverityBadge } from '../../components/shared/SeverityBadge';
+import { SlaStateBadge } from '../../components/shared/SlaStateBadge';
 import { CopyTrackingId } from '../../components/shared/CopyTrackingId';
 import { BeforeAfterViewer } from '../../components/shared/BeforeAfterViewer';
 import { IncidentTimeline, type TimelineEvent } from '../../components/shared/IncidentTimeline';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
-import type { QrProject, Incident, ApiResponse } from '../../types';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import type { QrProject, PublicTracking, PublicTrackingEvent, ApiResponse } from '../../types';
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   planned: { label: 'Planned', color: 'var(--cr-amber)' },
@@ -33,59 +38,168 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   cancelled: { label: 'Cancelled', color: 'var(--cr-red)' },
 };
 
+/** Statuses after which nothing further is expected to happen. */
+const TERMINAL_STATUSES = new Set(['resolved', 'closed', 'rejected']);
+
+/** Human wording for the AI verification outcome. */
+function verificationNotice(status?: string | null): {
+  tone: 'ok' | 'warn' | 'bad' | 'info';
+  text: string;
+} | null {
+  switch ((status || '').toLowerCase()) {
+    case 'verified':
+      return { tone: 'ok', text: 'Repair verified by AI inspection.' };
+    case 'error':
+      return {
+        tone: 'warn',
+        text: 'AI verification could not complete — the repair was not rejected and is pending human review.',
+      };
+    case 'rejected':
+      return {
+        tone: 'bad',
+        text: 'The submitted repair did not pass verification. Rework has been requested.',
+      };
+    case 'pending':
+      return { tone: 'info', text: 'Verification of the submitted repair is in progress.' };
+    default:
+      return null;
+  }
+}
+
+const NOTICE_CLASS: Record<string, string> = {
+  ok: 'bg-[var(--cr-green-light)] text-[var(--cr-green)] border-[rgba(26,122,62,0.2)]',
+  warn: 'bg-[var(--cr-amber-light)] text-[var(--cr-amber)] border-[rgba(146,64,14,0.25)]',
+  bad: 'bg-[var(--cr-red-light)] text-[var(--cr-red)] border-[rgba(185,28,28,0.2)]',
+  info: 'bg-[var(--cr-blue-light)] text-[var(--cr-blue-mid)] border-[rgba(0,85,164,0.2)]',
+};
+
+/**
+ * Convert the backend's citizen_visible_timeline into timeline UI events.
+ * This renders EXACTLY what the server recorded — no invented steps. The
+ * current status is marked "active" unless it is terminal.
+ */
+function toTimelineEvents(
+  timeline: PublicTrackingEvent[],
+  currentStatus: string
+): TimelineEvent[] {
+  const isTerminal = TERMINAL_STATUSES.has(currentStatus);
+  return timeline.map((entry, index) => {
+    const isCurrent = entry.status === currentStatus && !isTerminal;
+    // Last entry of a terminal timeline is complete; everything else follows
+    // its position relative to the current status.
+    const stepStatus: TimelineEvent['status'] = isCurrent
+      ? 'active'
+      : isTerminal
+      ? 'complete'
+      : 'complete';
+    const label = STATUS_LABEL[entry.status]?.label ?? entry.status;
+    return {
+      id: `tl-${index}`,
+      label: entry.status === currentStatus ? `Status: ${label}` : label,
+      detail: entry.note || undefined,
+      timestamp: entry.time,
+      status: stepStatus,
+    };
+  });
+}
+
 export default function QrTracker() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
   const [project, setProject] = useState<QrProject | null>(null);
-  const [incident, setIncident] = useState<Incident | null>(null);
+  const [incident, setIncident] = useState<PublicTracking | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 503 from the public endpoint: tracking disabled server-side (migration 009
+  // pending). Distinct from a transient network failure — reloading cannot fix
+  // it, so the empty-state action offered differs.
+  const [serviceUnavailable, setServiceUnavailable] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
+  const [lookupValue, setLookupValue] = useState('');
 
   useEffect(() => {
     if (!id) {
-      setNotFound(true);
+      // No id in the path: `/track` renders the tracking-ID lookup form.
       setLoading(false);
+      setProject(null);
+      setIncident(null);
+      setNotFound(false);
+      setError(null);
       return;
     }
 
+    let isMounted = true;
     setLoading(true);
     setError(null);
     setNotFound(false);
+    setServiceUnavailable(false);
+    setProject(null);
+    setIncident(null);
 
-    // Try fetching QR project first
-    fetch(`/api/v1/qr-projects/${id}`)
-      .then(async (res) => {
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data) {
+    (async () => {
+      try {
+        // 1. A QR project board?
+        const projectRes = await fetch(`/api/v1/qr-projects/${encodeURIComponent(id)}`);
+        if (projectRes.ok) {
+          const json: ApiResponse<QrProject> = await projectRes.json();
+          if (isMounted && json.success && json.data) {
             setProject(json.data);
             return;
           }
         }
 
-        // If not a QR project, check if it's an incident
-        const incRes = await fetch(`/api/v1/incidents/${id}`);
+        // 2. Otherwise a public incident token?
+        const incRes = await fetch(
+          `/api/v1/incidents/public/track/${encodeURIComponent(id)}`
+        );
+
+        // Migration 009 pending: say so plainly instead of showing "not found".
+        if (incRes.status === 503) {
+          const body = await incRes.json().catch(() => ({}));
+          if (isMounted) {
+            setServiceUnavailable(true);
+            setError(
+              body?.detail || 'Public tracking is not enabled on this deployment yet.'
+            );
+          }
+          return;
+        }
+
         if (incRes.ok) {
-          const incJson = await incRes.json();
-          if (incJson.success && incJson.data) {
-            setIncident(incJson.data);
+          const data: PublicTracking = await incRes.json();
+          if (isMounted && data?.tracking_id) {
+            setIncident(data);
             return;
           }
         }
 
-        if (res.status === 404 && incRes.status === 404) {
-          setNotFound(true);
-        } else {
-          setNotFound(true);
-        }
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : 'Network error';
-        setError(msg);
-      })
-      .finally(() => setLoading(false));
+        if (isMounted) setNotFound(true);
+      } catch (err: unknown) {
+        if (!isMounted) return;
+        setError(err instanceof Error ? err.message : 'Network error');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
+
+  const handleLookup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const raw = lookupValue.trim();
+    if (!raw) return;
+    // Accept a pasted share link as well as a bare tracking token.
+    const marker = '/track/';
+    const token = raw.includes(marker)
+      ? raw.split(marker).pop()!.split(/[?#]/)[0]
+      : raw;
+    if (token) navigate(`/track/${encodeURIComponent(token)}`);
+  };
 
   const handleShare = () => {
     const url = window.location.href;
@@ -112,6 +226,97 @@ export default function QrTracker() {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  // ── Tracking-ID lookup (route `/track` with no id) ──
+  // The landing page's "Track" link used to point at `/track/demo`, which
+  // always rendered "Public Record Not Found". This gives it a real entry point.
+  if (!id) {
+    return (
+      <div className="min-h-screen cr-auth-bg flex flex-col">
+        <div className="cr-tricolor-bar" />
+        <header className="bg-[var(--cr-authority)] text-white px-6 py-6 shadow-md">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-white/15 backdrop-blur flex items-center justify-center font-black text-sm">
+                JS
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block">
+                  Jan Samadhan Public Tracker
+                </span>
+                <h1 className="text-base sm:text-lg font-extrabold tracking-tight">
+                  Track a Complaint
+                </h1>
+              </div>
+            </div>
+            <Link to="/" className="text-xs font-semibold text-white/80 hover:text-white underline">
+              Home
+            </Link>
+          </div>
+        </header>
+
+        <main className="flex-1 flex items-start justify-center p-4 sm:p-6">
+          <motion.div
+            className="w-full max-w-lg"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="border-[var(--cr-border)] shadow-sm overflow-hidden">
+              <CardContent className="p-6 sm:p-7 space-y-5">
+                <div className="flex items-start gap-3">
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: 'var(--cr-blue-light)', color: 'var(--cr-blue-mid)' }}
+                  >
+                    <Search size={18} aria-hidden />
+                  </div>
+                  <div>
+                    <h2 className="text-[16px] font-bold text-[var(--cr-text)]">
+                      Enter your tracking ID
+                    </h2>
+                    <p className="text-[13px] text-[var(--cr-text-muted)] mt-1 leading-relaxed">
+                      Use the ID from your complaint receipt (for example{' '}
+                      <span className="font-mono font-semibold">CIV-…</span>) or paste the
+                      full tracking link a neighbour shared with you.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleLookup} className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="tracking-lookup">Tracking ID or link</Label>
+                    <Input
+                      id="tracking-lookup"
+                      value={lookupValue}
+                      onChange={(e) => setLookupValue(e.target.value)}
+                      placeholder="CIV-1758300000-A1B2 or https://…/track/…"
+                      autoComplete="off"
+                      autoFocus
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="authority"
+                    className="w-full"
+                    disabled={!lookupValue.trim()}
+                  >
+                    <Search size={16} className="mr-2" aria-hidden />
+                    Track Complaint
+                  </Button>
+                </form>
+
+                <p className="text-[12px] text-[var(--cr-text-muted)] border-t border-[var(--cr-border)] pt-4">
+                  Complaints tagged with a QR code on a civic project site open
+                  directly — just scan the code.
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </main>
+      </div>
+    );
+  }
+
   // ── Loading ──
   if (loading) {
     return (
@@ -126,12 +331,22 @@ export default function QrTracker() {
     return (
       <div className="min-h-screen cr-auth-bg flex items-center justify-center p-6">
         <EmptyState
-          title="Could Not Load Record"
+          title={serviceUnavailable ? 'Tracking Unavailable' : 'Could Not Load Record'}
           description={error}
           action={
-            <Button variant="authority" onClick={() => window.location.reload()}>
-              Try Again
-            </Button>
+            serviceUnavailable ? (
+              // 503 = tracking disabled server-side (migration pending);
+              // reloading cannot fix it, so navigate instead of retrying.
+              <Button asChild variant="authority">
+                <Link to="/">
+                  <ArrowLeft size={16} className="mr-1.5" /> Return to Home
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="authority" onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+            )
           }
         />
       </div>
@@ -159,56 +374,17 @@ export default function QrTracker() {
 
   // ─── 1. PUBLIC INCIDENT TRACKER PER SPEC §17 ─────────────────
   if (incident) {
-    const isResolved = incident.status === 'resolved';
 
-    // Generate timeline events from incident audit
-    const events: TimelineEvent[] = [
-      {
-        id: '1',
-        label: 'Grievance Submitted',
-        detail: `Logged with GPS location and registered citizen identity`,
-        timestamp: incident.created_at,
-        status: 'complete',
-      },
-      {
-        id: '2',
-        label: 'Automated AI Triage & Verification',
-        detail: `Classified as ${incident.category.toUpperCase()} • Severity ${incident.severity.toUpperCase()} • Routed to ${incident.department || 'Public Works'}`,
-        status: incident.status === 'pending' ? 'active' : 'complete',
-      },
-      {
-        id: '3',
-        label: 'Assigned to Municipal Field Worker',
-        detail: incident.assigned_to
-          ? `Dispatched to authorized field operative`
-          : `Queued in municipal department schedule`,
-        status:
-          incident.status === 'pending'
-            ? 'pending'
-            : incident.status === 'assigned'
-            ? 'active'
-            : 'complete',
-      },
-      {
-        id: '4',
-        label: 'Field Resolution in Progress',
-        detail: 'On-site maintenance team conducting corrective action',
-        status:
-          incident.status === 'in-progress'
-            ? 'active'
-            : isResolved
-            ? 'complete'
-            : 'pending',
-      },
-      {
-        id: '5',
-        label: isResolved ? 'Issue Resolved & AI Verified' : 'Resolution Review & Closure',
-        detail: isResolved
-          ? 'Worker submitted photo proof. Verified and closed.'
-          : 'Pending photographic verification proof',
-        status: isResolved ? 'complete' : 'pending',
-      },
-    ];
+    // Render ONLY what the database recorded. The previous implementation
+    // hardcoded a 5-step story, so every visitor was told a field crew was
+    // mid-repair even for incidents nobody had opened.
+    const events = toTimelineEvents(
+      incident.citizen_visible_timeline ?? [],
+      incident.status
+    );
+    const notice = verificationNotice(incident.verification_status);
+    const hasBefore = Boolean(incident.image_url);
+    const hasAfter = Boolean(incident.resolution_image);
 
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
@@ -248,6 +424,9 @@ export default function QrTracker() {
                 <CopyTrackingId trackingId={incident.tracking_id} className="font-mono text-xs" />
               </div>
 
+              {/* Server-computed SLA. Was previously absent from this page. */}
+              <SlaStateBadge state={incident.sla_state} dueAt={incident.sla_due_at} />
+
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 leading-snug">
                   {incident.title}
@@ -258,10 +437,10 @@ export default function QrTracker() {
               </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-4 text-xs text-slate-500">
-                {incident.address && (
+                {incident.location_label && (
                   <span className="flex items-center gap-1.5">
-                    <MapPin size={14} className="text-slate-400" />
-                    <span>{incident.address}</span>
+                    <MapPin size={14} className="text-slate-400" aria-hidden />
+                    <span>{incident.location_label}</span>
                   </span>
                 )}
                 {incident.department && (
@@ -284,23 +463,48 @@ export default function QrTracker() {
             </CardContent>
           </Card>
 
-          {/* Before / After Evidence Viewer (If resolved) */}
-          {isResolved && incident.image_url && (
+          {/* Verification outcome banner (only when AI ran) */}
+          {notice && (
+            <div
+              role="status"
+              className={`rounded-lg border px-4 py-3 text-[13px] font-semibold flex items-start gap-2 ${NOTICE_CLASS[notice.tone]}`}
+            >
+              {notice.tone === 'ok' ? (
+                <ShieldCheck size={16} className="mt-0.5 flex-shrink-0" aria-hidden />
+              ) : (
+                <ShieldAlert size={16} className="mt-0.5 flex-shrink-0" aria-hidden />
+              )}
+              <span>{notice.text}</span>
+            </div>
+          )}
+
+          {/* Before / After Evidence Viewer — only when BOTH photos exist.
+              Previously the "after" slot silently reused the "before" photo,
+              implying a repair had happened when only one photo existed. */}
+          {hasBefore && hasAfter && (
             <Card className="border-emerald-200 dark:border-emerald-900/50 shadow-sm bg-emerald-50/20 p-6 space-y-3">
               <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
-                <ShieldCheck size={18} className="text-emerald-600" />
-                <span>Verified Photographic Proof of Resolution</span>
+                <ShieldCheck size={18} className="text-emerald-600" aria-hidden />
+                <span>Before &amp; After — Photographic Evidence</span>
               </div>
-              <p className="text-xs text-slate-500">
-                The field repair was captured and verified through Jan Samadhan AI vision audit:
-              </p>
               <BeforeAfterViewer
-                beforeSrc={incident.image_url}
-                afterSrc={incident.image_url} // or after_image_url
-                beforeLabel="Reported Hazard"
-                afterLabel="Resolved State"
-                aiVerified={true}
+                beforeSrc={incident.image_url!}
+                afterSrc={incident.resolution_image!}
+                beforeLabel="Reported Issue"
+                afterLabel="After Repair"
+                aiVerified={incident.verification_status === 'verified'}
               />
+            </Card>
+          )}
+          {hasBefore && !hasAfter && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-sm p-5">
+              <div className="flex items-center gap-2 text-slate-500 text-[13px]">
+                <ImageOff size={16} aria-hidden />
+                <span>
+                  Original report photo attached. No post-repair photo has been
+                  submitted yet.
+                </span>
+              </div>
             </Card>
           )}
 
@@ -309,7 +513,14 @@ export default function QrTracker() {
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-6">
               Official Resolution Timeline
             </h3>
-            <IncidentTimeline events={events} />
+            {events.length > 0 ? (
+              <IncidentTimeline events={events} />
+            ) : (
+              <p className="text-[13px] text-slate-500">
+                No status updates have been recorded yet. This page will update
+                automatically as the department works on the complaint.
+              </p>
+            )}
           </Card>
 
           {/* Social Share & Reassurance */}
@@ -337,6 +548,13 @@ export default function QrTracker() {
               )}
             </Button>
           </div>
+
+          <Link
+            to="/"
+            className="block text-center text-[13px] font-semibold text-[var(--cr-blue-mid)] hover:underline py-2"
+          >
+            Report another issue →
+          </Link>
         </main>
       </div>
     );

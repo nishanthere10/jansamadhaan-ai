@@ -13,7 +13,6 @@ import {
   HelpCircle,
   Camera,
   MapPin,
-  CheckCircle2,
   Mic,
   MicOff,
   Sparkles,
@@ -37,9 +36,6 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Button } from '../../components/ui/button';
-import { Badge } from '../../components/ui/badge';
-import { AiStatusTimeline } from '../../components/shared/AiStatusTimeline';
-import { CopyTrackingId } from '../../components/shared/CopyTrackingId';
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -169,10 +165,6 @@ export default function ReportIncident() {
 
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [submittedData, setSubmittedData] = useState<{
-    id: string;
-    tracking_id: string;
-  } | null>(null);
 
   // Auto-reverse geocode handler
   const handleSelectCoordinates = async (lat: number, lng: number) => {
@@ -398,10 +390,11 @@ export default function ReportIncident() {
       const json = await res.json();
       if (res.ok && json.success) {
         const item = json.data;
-        setSubmittedData({
-          id: item?.id || '',
-          tracking_id: item?.tracking_id || 'CIV-2026-PENDING',
-        });
+        if (item?.id) {
+          navigate(`/citizen/incidents/${item.id}/receipt`);
+        } else {
+          navigate('/citizen');
+        }
       } else {
         throw new Error(json.detail || json.message || 'Failed to submit report. Please try again.');
       }
@@ -414,110 +407,6 @@ export default function ReportIncident() {
   };
 
   const selectedCategoryObj = CATEGORIES.find((c) => c.value === category);
-
-  // ── SUBMISSION SUCCESS SCREEN ─────────────────────────────
-  if (submittedData) {
-    return (
-      <div className="max-w-2xl mx-auto py-8 px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="space-y-6"
-        >
-          {/* Reassurance Header */}
-          <Card className="border-[var(--cr-green)]/30 bg-gradient-to-b from-[var(--cr-green-light)]/40 to-white dark:to-slate-900 shadow-xl text-center p-8">
-            <div className="w-16 h-16 rounded-full bg-[var(--cr-green)] text-white mx-auto flex items-center justify-center shadow-lg shadow-[var(--cr-green)]/20 mb-4 animate-in zoom-in-50 duration-300">
-              <Check size={32} strokeWidth={3} />
-            </div>
-
-            <Badge variant="outline" className="mb-2 bg-emerald-50 text-[var(--cr-green)] border-[var(--cr-green)]/30 font-semibold px-3 py-1">
-              {t('report.badge') || 'Complaint Registered'}
-            </Badge>
-
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              Report Successfully Logged!
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 max-w-md mx-auto mt-2 text-sm">
-              Your civic report has been securely registered in the municipal management system and forwarded for automated AI triage.
-            </p>
-
-            <div className="mt-6 inline-flex flex-col sm:flex-row items-center gap-2 bg-white dark:bg-slate-950 px-5 py-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Public Tracking ID:
-              </span>
-              <CopyTrackingId trackingId={submittedData.tracking_id} className="text-base font-bold" />
-            </div>
-          </Card>
-
-          {/* Live AI Processing Timeline */}
-          <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--cr-authority)]" />
-              Automated Triage Pipeline
-            </h2>
-            <AiStatusTimeline
-              steps={[
-                {
-                  id: '1',
-                  label: 'Citizen Submission Recorded',
-                  detail: `Timestamp logged with GPS coordinates and verified citizen account`,
-                  status: 'complete',
-                },
-                {
-                  id: '2',
-                  label: 'AI Evidence & Spam Validation',
-                  detail: imageUrl
-                    ? 'Visual hazard detected and classified against duplicate reports'
-                    : 'Text semantics validated for genuine civic distress',
-                  status: 'complete',
-                },
-                {
-                  id: '3',
-                  label: 'Department Routing',
-                  detail: `Assigned to ${selectedCategoryObj?.label || 'Municipal Public Works'} Operations Queue`,
-                  status: 'active',
-                },
-                {
-                  id: '4',
-                  label: 'Field Worker Dispatch',
-                  detail: 'Priority SLA assigned based on civic severity score',
-                  status: 'pending',
-                },
-              ]}
-            />
-          </Card>
-
-          {/* Primary Next Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <Button
-              variant="citizen"
-              size="lg"
-              className="flex-1 font-semibold"
-              onClick={() => navigate('/dashboard')}
-            >
-              Go to Citizen Dashboard
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="flex-1 font-semibold"
-              onClick={() => {
-                setSubmittedData(null);
-                setCurrentStep(1);
-                setDescription('');
-                setImageUrl(null);
-                setAddress('');
-                setAiImageStatus(null);
-              }}
-            >
-              Report Another Issue
-            </Button>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
 
   // ── MAIN 5-STEP CONVERSATIONAL FLOW ──────────────────────
   return (

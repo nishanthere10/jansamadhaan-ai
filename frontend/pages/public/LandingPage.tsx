@@ -254,7 +254,7 @@ export default function LandingPage() {
               {t('landing.features')}
             </a>
             <NavLink
-              to="/track/demo"
+              to="/track"
               className="hidden md:block text-[13px] font-medium text-[var(--cr-text-muted)] hover:text-[var(--cr-text)] transition-colors px-2 py-1"
             >
               {t('landing.track')}

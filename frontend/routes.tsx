@@ -18,6 +18,7 @@ const IncidentsList = React.lazy(() => import('./pages/shared/IncidentsList'));
 const CitizenDashboard = React.lazy(() => import('./pages/citizen/Dashboard'));
 const WorkerDashboard = React.lazy(() => import('./pages/worker/Dashboard'));
 const ReportIncident = React.lazy(() => import('./pages/citizen/ReportIncident'));
+const CitizenReceipt = React.lazy(() => import('./pages/citizen/CitizenReceipt'));
 const QrTracker = React.lazy(() => import('./pages/public/QrTracker'));
 
 // ─── Page Loading Fallback ────────────────────────────────
@@ -100,7 +101,9 @@ export const AppRoutes = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 
-          {/* Public QR tracker — no auth needed */}
+          {/* Public QR tracker — no auth needed. `/track` alone renders the
+              tracking-ID lookup form. */}
+          <Route path="/track" element={<QrTracker />} />
           <Route path="/track/:id" element={<QrTracker />} />
 
           {/* Error pages */}
@@ -161,6 +164,14 @@ export const AppRoutes = () => {
                         element={
                           <RoleRoute roles={['citizen']}>
                             <ReportIncident />
+                          </RoleRoute>
+                        }
+                      />
+                      <Route
+                        path="/citizen/incidents/:id/receipt"
+                        element={
+                          <RoleRoute roles={['citizen']}>
+                            <CitizenReceipt />
                           </RoleRoute>
                         }
                       />
