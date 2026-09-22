@@ -1,410 +1,280 @@
-# Jan Samadhan (जन समाधान) 🇮🇳
-### AI-Powered Civic Grievance Redressal & Resolution Platform
+<p align="center">
+  <img src="frontend/public/logo2.jpg" alt="Jān Samādhan — जन शिकायत निवारण मंच" width="560"/>
+</p>
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18.3+-61DAFB.svg?style=flat&logo=react&logoColor=black)](https://reactjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5+-3178C6.svg?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-FF6F00.svg?style=flat&logo=chainlink&logoColor=white)](https://langchain-ai.github.io/langgraph/)
-[![Groq Cloud](https://img.shields.io/badge/Inference-Groq_Cloud-F55036.svg?style=flat&logo=fastapi&logoColor=white)](https://groq.com)
-[![Supabase](https://img.shields.io/badge/Database-Supabase_PostgreSQL-3ECF8E.svg?style=flat&logo=supabase&logoColor=white)](https://supabase.com)
-[![UX4G Compliant](https://img.shields.io/badge/Design-UX4G_Standard-1E3A8A.svg?style=flat)](https://doc.ux4g.gov.in)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">Jān Samādhan · जन समाधान</h1>
 
-**Jan Samadhan** (meaning *"Public Solution"* in Hindi) is a next-generation civic incident management platform designed for Indian municipal governance. Adhering to the Government of India's **UX4G (User Experience for Government)** design standards, it unifies citizen reporting across web and WhatsApp channels, orchestrates automated multimodal AI classification, clusters duplicate incidents, and guarantees closed-loop accountability through automated proof-of-work computer vision audits.
+<p align="center">
+  <b>AI-powered civic issue redressal for Indian municipalities</b><br/>
+  Snap a photo → AI triage → SLA-tracked resolution → public QR transparency.<br/>
+  <sub><i>"जन शिकायत निवारण मंच" — the people's grievance redressal platform.</i></sub>
+</p>
 
----
+<div align="center">
 
-## 📑 Table of Contents
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React 19](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_4-06B6D4?logo=tailwindcss&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white)
+![Gemini 2.0 Flash](https://img.shields.io/badge/Gemini_2.0_Flash-8E75B2?logo=google&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq_Inference-F55036)
+![Twilio WhatsApp](https://img.shields.io/badge/Twilio_WhatsApp-F22F46?logo=twilio&logoColor=white)
+![License](https://img.shields.io/badge/LICENSE-MIT-yellow.svg)
+[![CI](https://github.com/nishanthere10/jansamadhaan-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/nishanthere10/jansamadhaan-ai/actions/workflows/ci.yml)
 
-- [Key Capabilities](#-key-capabilities)
-- [The Cognitive AI Pipeline](#-the-cognitive-ai-pipeline)
-- [Role-Based Workflows](#-role-based-workflows)
-- [System Architecture](#-system-architecture)
-- [Tech Stack](#-tech-stack)
-- [Repository Structure](#-repository-structure)
-- [Quick Start Guide](#-quick-start-guide)
-  - [Prerequisites](#prerequisites)
-  - [1. Backend Setup](#1-backend-setup)
-  - [2. Frontend Setup](#2-frontend-setup)
-  - [3. Database Migrations & Seeding](#3-database-migrations--seeding)
-- [Verification & Quality Gates](#-verification--quality-gates)
-- [Security & Production Hardening](#-security--production-hardening)
-- [API Overview](#-api-overview)
-- [Design Standards (UX4G)](#-design-standards-ux4g)
-- [Contributing & License](#-contributing--license)
+</div>
 
----
-
-## 🌟 Key Capabilities
-
-* 📱 **Omnichannel Citizen Intake**: Submit grievances via a modern web app or through a guided WhatsApp conversational wizard using text, audio voice notes, photo evidence, and live GPS pins.
-* 🌐 **Real-time Indic Language Translation**: Seamlessly handles submissions in **Hindi (हिन्दी)**, **Tamil (தமிழ்)**, **Telugu (తెలుగు)**, **Marathi (मराठी)**, **Bengali (বাংলা)**, and **English**, normalizing text while preserving the citizen's original wording.
-* 🎙️ **Voice Note Processing**: Groq-accelerated Whisper model transcribes regional audio complaints into text directly within the ingestion pipeline.
-* 👁️ **Computer Vision Damage Assessment**: Inspects uploaded damage photos via **Llama-4-Scout (17B)** to verify infrastructure hazards, estimate physical dimensions, and reject non-civic spam (such as selfies or stock photos).
-* 🔍 **Spatial-Temporal Duplicate Clustering**: Employs the Haversine distance formula ($\le 500\text{ m}$) coupled with keyword similarity over a 5-day sliding window to automatically merge duplicate complaints under a primary incident, boosting priority as report counts rise.
-* 🛠️ **Proof-of-Resolution AI Audit**: When field workers mark an incident resolved, they must upload an "After" photo. The system runs an automated side-by-side vision evaluation against the original "Before" photo, ensuring physical repairs are verified before ticket closure.
-* ⭐ **Citizen Credibility Rating**: Dynamic trust scoring (0–100) rewards constructive civic reporting (+10 on verified resolution) and discourages spam (-15 on rejected submissions).
-* 📊 **Authority Intelligence & Heatmaps**: Interactive Leaflet geospatial heatmaps and Recharts analytics give municipal administrators instant visibility into civic hotspots and department turnaround metrics.
-* 🏷️ **Physical QR Code Project Boards**: Citizens can scan on-site QR codes attached to public works projects to view budgets, contractor details, and log location-specific issues.
+<p align="center">
+  <img src="https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=1200&q=70" width="860" alt="Indian city street at dusk"/>
+  <br/><sub>Photos: <a href="https://unsplash.com">Unsplash</a> · Logos: original project artwork</sub>
+</p>
 
 ---
 
-## 🤖 The Cognitive AI Pipeline
+## 💡 The Problem
 
-Jan Samadhan leverages **LangGraph** to execute a resilient, multi-stage directed graph running in asynchronous FastAPI background tasks:
+Every Indian municipality runs on paper grievances: complaints get phoned in, scribbled into registers, "lost" between departments, and citizens never learn the outcome. **Jān Samādhan** replaces that opacity with an accountable, measurable pipeline — every issue becomes a photo with GPS, a classified ticket with a **publicly visible SLA clock**, and a QR code anyone can scan to see exactly what happened.
+
+| Without Jān Samādhan | With Jān Samādhan |
+|---|---|
+| Verbal complaints, no evidence | Geotagged photo + AI-verified description |
+| Manual routing, days lost | Auto category + severity + department in seconds |
+| No deadline, no accountability | Municipal SLA clock with public breach visibility |
+| Citizen in the dark | Public QR tracker + WhatsApp confirmation |
+
+## 🏗️ Architecture
 
 ```mermaid
-flowchart TD
-    A([Incident Created\nWeb or WhatsApp]) --> B[1. Transcription\nGroq Whisper Large v3]
-    B --> C[2. Vision Damage Inspection\nLlama-4-Scout 17B]
-    C --> D[3. Indic Language Normalization\nLlama-3.1-8B]
-    D --> E[4. Classification & Spam Filtering\nLlama-3.3-70B]
-    E --> F[5. Severity & Risk Scoring\nLlama-3.1-8B]
-    F --> G[6. Department Routing\nLlama-3.3-70B]
-    G --> H{Post-Pipeline Tasks}
-    H --> I[Duplicate Clustering\nHaversine <= 500m + Keywords]
-    H --> J[Trust Score Update\nCitizen Credibility Metric]
-    I --> K[(Supabase PostgreSQL\nPersist AI Metadata & Clusters)]
-    J --> K
+flowchart TB
+    subgraph CLIENTS["👥 Clients"]
+        SPA["React 19 + Vite SPA<br/>Citizen · Worker · Authority dashboards"]
+        WA["WhatsApp user<br/>(no app install needed)"]
+    end
+
+    subgraph EDGE["🛡️ Edge"]
+        API["FastAPI REST API<br/>Supabase JWT-protected"]
+        WH["Twilio WhatsApp Webhook<br/>whatsapp_ai module"]
+    end
+
+    subgraph AI["🧠 AI Pipeline"]
+        LG["LangGraph Triage Graph"]
+        GV["Gemini 2.0 Flash<br/>vision · photo analysis"]
+        GT["Groq inference<br/>classification · translation"]
+    end
+
+    subgraph DATA["🗄️ Data"]
+        SB["Supabase Postgres<br/>RLS policies + Storage"]
+        AUTH["Supabase Auth<br/>JWT issuing"]
+    end
+
+    SPA -->|"REST + Bearer JWT"| API
+    WA -->|"photo + text"| WH
+    WH --> API
+    API --> LG
+    LG --> GV
+    LG --> GT
+    API --> SB
+    API --> AUTH
+    SB -.->|"public token projection"| API
 ```
 
-### Pipeline Node Specification
 
-| Node | Service Name | Model / Engine | Responsibilities |
-|---|---|---|---|
-| **1. Audio** | `TranscriptionService` | `whisper-large-v3` | Transcribes audio recordings and voice notes into text. |
-| **2. Vision** | `VisionAnalysisService` | `meta-llama/llama-4-scout-17b` | SSRF-guarded image fetching, structural damage detection, safety hazard flagging, relevance check. |
-| **3. Translation** | `TranslationService` | `llama-3.1-8b-instant` | Language detection and translation of 6 Indic languages to English. |
-| **4. Classification** | `ClassificationService` | `llama-3.3-70b-versatile` | Structured JSON classification (Pothole, Sanitation, Water, Electricity, etc.), title/summary generation, spam detection. |
-| **5. Severity** | `SeverityScoringService` | `llama-3.1-8b-instant` | Risk calculation (0.0 to 1.0) and urgency assignment (`low`, `medium`, `high`, `critical`). |
-| **6. Routing** | `DepartmentRoutingService` | `llama-3.3-70b-versatile` | Suggests primary and secondary municipal departments (e.g., Roads & Traffic, Health, Utilities). |
-| **7. Clustering** | `DuplicateDetectionService` | Haversine + Jaccard Overlap | Identifies duplicate reports within 500m and groups them under a master cluster. |
-| **8. Resolution** | `ResolutionVerificationService` | `meta-llama/llama-4-scout-17b` | Compares worker "After" photo with original "Before" photo; tri-state verification (`verified`, `rejected`, `error`). |
+## 🔄 The Life of a Complaint
 
----
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Citizen
+    participant FE as React SPA
+    participant BE as FastAPI
+    participant AI as LangGraph + Gemini + Groq
+    participant DB as Supabase Postgres
+    participant WA as WhatsApp (Twilio)
 
-## 👥 Role-Based Workflows
-
-```
-                               ┌─────────────────────────────────┐
-                               │       JAN SAMADHAN ROLES        │
-                               └────────────────┬────────────────┘
-                                                │
-                 ┌──────────────────────────────┼──────────────────────────────┐
-                 ▼                              ▼                              ▼
-          [ 🏛️ CITIZEN ]                [ 🏢 AUTHORITY ]               [ 👷 FIELD WORKER ]
-      - Web & WhatsApp reporting    - Central triage dashboard      - Mobile-first task list
-      - Audio, photo, GPS pin       - AI diagnostic inspector       - GPS turn-by-turn navigation
-      - Live tracking (CIV-ID)      - Bulk worker dispatch          - In-progress status update
-      - Personal timeline           - Geo heatmaps & Recharts       - Before vs After photo proof
-      - Dynamic trust score         - QR project management         - Automated AI repair check
+    C->>FE: Snap photo of issue + GPS
+    FE->>BE: POST /api/incidents/upload
+    BE->>AI: Vision analysis · classify · translate
+    AI-->>BE: category · severity · dept · trust score
+    BE->>DB: Store incident + SLA due date
+    BE-->>WA: Confirmation message + tracking link
+    C->>FE: /track/:id — live SLA status
+    BE->>DB: Worker resolves → status + photo proof
+    FE->>BE: GET /api/incidents/public/track/:token
+    FE-->>C: "Resolved in 9h of 24h SLA ✅"
 ```
 
----
+### ⏱️ Municipal SLA Engine
 
-## 🏛️ System Architecture
+Real deadlines, not vibes. The SLA engine (`backend/app/services/sla_service.py`, mirrored in `frontend/lib/sla.ts`) assigns every category a target window, tightened by severity:
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           FRONTEND (React 18 + Vite)                    │
-│                                                                         │
-│   Citizen Portal         Authority Dashboard          Worker Field App  │
-│   (Report, Track, Audio) (Triage, Analytics, QR)     (Tasks, Proof Cam) │
-│           │                       │                           │         │
-│           └───────────────────────┼───────────────────────────┘         │
-│                                   ▼                                     │
-│                     Zustand State Stores & Axios API                    │
-│                      UX4G Design System + Tailwind                      │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │ HTTP REST + JWT
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           BACKEND (FastAPI API)                         │
-│                                                                         │
-│   /api/v1/auth          /api/v1/incidents            /api/v1/qr-projects│
-│   /api/v1/notifications /api/webhooks/whatsapp       /api/v1/ai         │
-│                                   │                                     │
-│   FastAPI Request Logging ────────┼─────────── Token & RBAC Security    │
-│                                   ▼                                     │
-│                 FastAPI Asynchronous BackgroundTasks                    │
-│                                   │                                     │
-│       ┌───────────────────────────┴───────────────────────────┐         │
-│       ▼                                                       ▼         │
-│  LangGraph Engine (Groq Cloud)                      Twilio WhatsApp     │
-│  Whisper • Llama-4-Scout • Llama-3.3                Conversational Bot  │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           DATABASE & STORAGE                            │
-│                        Supabase (PostgreSQL 15)                         │
-│                                                                         │
-│   • users (RBAC & Trust Score)          • incidents (Mirrored Coords)   │
-│   • incident_ai_metadata                • resolution_verifications      │
-│   • notifications                       • qr_projects & incidents       │
-│   • Supabase Storage (Buckets: grievance_images)                        │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🛠️ Tech Stack
-
-### Frontend
-* **Framework**: React 18 with TypeScript, bundled via Vite.
-* **State Management**: Zustand stores (`useAuthStore`, `useLanguageStore`, `useSidebarStore`, `useThemeStore`).
-* **Styling**: Tailwind CSS v4 featuring UX4G Government Continuity Design Tokens.
-* **Visuals & Charts**: Recharts for metrics, Leaflet & React-Leaflet for geospatial heatmaps.
-* **Micro-interactions**: Framer Motion, Radix UI primitives, Lucide React icons, and Sonner notifications.
-
-### Backend
-* **API Framework**: FastAPI (Python 3.10+) running on ASGI Uvicorn.
-* **AI Orchestration**: LangGraph, LangChain Core, and Groq SDK.
-* **AI Inference**: Groq Cloud (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `llama-4-scout-17b`, `whisper-large-v3`).
-* **Messaging**: Twilio WhatsApp API (TwiML webhook flow).
-* **Database & Auth**: Supabase PostgreSQL with Row Level Security (RLS) & Supabase Storage.
-* **Validation & Settings**: Pydantic v2 & Pydantic Settings.
-
----
-
-## 📁 Repository Structure
-
-```
-jansamadhan-ai/
-├── backend/                       # FastAPI Python Backend
-│   ├── app/
-│   │   ├── main.py                # FastAPI factory, CORS, and router registration
-│   │   ├── core/                  # Configuration, database singleton, security, logging
-│   │   ├── api/                   # REST routes: auth, incident, qr_projects, ai, notifications
-│   │   ├── ai/                    # LangGraph pipeline, background tasks, Groq AI services
-│   │   ├── schemas/               # Pydantic request and response schemas
-│   │   ├── services/              # Business domain services (Incident, Notification, Resolution)
-│   │   └── whatsapp_ai/           # Twilio webhook controller, session manager, media services
-│   ├── migrations/                # Supabase SQL migrations (001 to 008)
-│   ├── tests/                     # Pytest automated test suite (145 tests)
-│   ├── seed_workers.py            # Department worker seed script
-│   └── requirements.txt           # Production dependencies
-│
-├── frontend/                      # React 18 + TypeScript + Vite Frontend
-│   ├── pages/                     # Citizen, Authority, Worker, Public, and Auth views
-│   ├── components/                # Modular UI primitives, layout, and role guards
-│   ├── store/                     # Zustand state stores
-│   ├── lib/                       # API helpers, translation barrels (6 languages)
-│   ├── index.css                  # Tailwind v4 + UX4G design tokens
-│   └── tests/                     # Frontend unit and route-guard tests
-│
-├── .github/workflows/             # CI/CD workflows (pytest, ruff, vulture, tsc, knip, build)
-├── PROJECT_GUIDE.md               # Detailed architecture guide and pitch notes
-├── CODEBASE_ANALYSIS.md           # In-depth architectural audit
-├── CURRENT_CODEBASE_REPORT.md     # Hardening & verification audit report
-├── DEAD_CODE_REGISTER.md          # Unused and parked code registry
-└── remaining.md                   # Deployment readiness checklist
-```
-
----
-
-## 🚀 Quick Start Guide
-
-### Prerequisites
-* **Node.js** $\ge 18.0.0$ and **npm** $\ge 9.0.0$
-* **Python** $\ge 3.10$ and **pip** (or `uv`)
-* A **Supabase** project (PostgreSQL + Auth + Storage)
-* A **Groq Cloud API Key** (from [console.groq.com](https://console.groq.com))
-* *(Optional)* **Twilio Account** (for live WhatsApp intake)
-
----
-
-### 1. Backend Setup
-
-```bash
-cd backend
-
-# Create and activate virtual environment
-python -m venv .venv
-
-# On Windows:
-.venv\Scripts\activate
-# On Linux / macOS:
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-
-# Configure environment variables
-cp .env.example .env
-```
-
-Edit `backend/.env` with your credentials:
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJh... # Supabase Service Role Key (bypasses RLS for admin)
-SUPABASE_JWT_SECRET=your-jwt-secret
-GROQ_API_KEY=gsk_...
-ENVIRONMENT=development
-DEV_AUTH_BYPASS=true
-
-# Optional Twilio parameters for WhatsApp:
-TWILIO_ACCOUNT_SID=your-sid
-TWILIO_AUTH_TOKEN=your-token
-TWILIO_PHONE_NUMBER=whatsapp:+14155238886
-```
-
-Start the backend API server:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
-```
-* **API Documentation**: [http://localhost:8001/api/docs](http://localhost:8001/api/docs)
-* **Health Check**: [http://localhost:8001/health](http://localhost:8001/health)
-
----
-
-### 2. Frontend Setup
-
-Open a new terminal session:
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Configure environment variables
-cp .env.example .env.local
-```
-
-Edit `frontend/.env.local`:
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJh... # Supabase Anon Key (safe for browser)
-```
-
-Start the Vite development server:
-```bash
-npm run dev
-```
-* **Web Portal**: [http://localhost:5173](http://localhost:5173)
-
----
-
-### 3. Database Migrations & Seeding
-
-1. Open your **Supabase Project Dashboard $\to$ SQL Editor**.
-2. Execute the migration scripts located in `backend/migrations/` in sequence:
-   * `001_initial_schema.sql` (Base tables: users, incidents, notifications)
-   * `002_ai_metadata.sql` (AI columns, classification fields)
-   * `003_add_clustering_columns.sql` (Duplicate detection metadata)
-   * `004_phase4.sql` (Resolution verification & trust scores)
-   * `005_schema_alignment.sql` (QR projects & incident relations)
-   * `006_resolution_pending.sql` (Pending resolution verification states)
-   * `007_atomic_resolution.sql` (Defines atomic `finalize_resolution` RPC)
-   * `008_updated_at_trigger.sql` (Automated `updated_at` trigger)
-3. Seed mock departmental workers:
-   ```bash
-   cd backend
-   python seed_workers.py
-   ```
-
-#### Default Test Accounts
-| Role | Email | Password |
+| Category | Standard | Critical |
 |---|---|---|
-| **Citizen** | `citizen@gov.in` | `password123` |
-| **Authority** | `authority@gov.in` | `password123` |
-| **Worker (PWD)** | `pwd@gov.in` | `password123` |
-| **Worker (Water)** | `water@gov.in` | `password123` |
-| **Worker (Electricity)** | `electric@gov.in` | `password123` |
+| 🗑️ Garbage · Open manhole | 12 h | 6 h |
+| 💧 Water leak · Drainage · Streetlight | 24 h | 12 h |
+| 🕳️ Pothole · Road damage | 48 h | 24 h |
+| 🌳 Encroachment · Horticulture | 72 h | 36 h |
 
----
+States: `ON TRACK` → `EXPIRING SOON` (< 3 h left) → `BREACHED` · `MET` · `CLOSED` · `UNKNOWN` — computed **identically server- and client-side**, powering the public tracker, worker queues, and authority analytics.
 
-## 🧪 Verification & Quality Gates
+### 📡 How the QR tracker works
 
-The repository includes a comprehensive testing and linting suite covering all layers:
+```mermaid
+flowchart LR
+    QR["QR code on site<br/>encodes public token"] -->|"citizen scans"| WEB["/track/:id — no login"]
+    WEB --> GET["GET /api/incidents/<br/>public/track/:token"]
+    GET --> PROJ["Safe projection:<br/>status · SLA · timeline · photo proof"]
+    PROJ --> CIT["Citizen sees the truth.<br/>No dashboard, no account, no excuses."]
+```
 
-### Backend Checks
+## 🧭 Role Journeys
+
+```mermaid
+flowchart LR
+    subgraph CIT["🧑 Citizen"]
+        R1["Report with photo<br/>Track via QR<br/>Give feedback"]
+    end
+    subgraph WRK["🦺 Worker"]
+        R2["See assigned queue<br/>Resolve with photo proof<br/>Build trust score"]
+    end
+    subgraph AUT["🏛️ Authority"]
+        R3["Triage + assign<br/>Monitor SLA breaches<br/>QR projects + analytics"]
+    end
+    CIT -->|"issues flow in"| AUT -->|"work flows down"| WRK -->|"proof flows back"| AUT
+    AUT -.->|"outcomes flow back"| CIT
+```
+
+
+## ✨ Feature Gallery
+
+<table>
+  <tr>
+    <td width="33%" align="center">
+      <img src="https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=1200&q=70" alt="Report from phone" width="100%"/><br/>
+      <b>📸 Snap &amp; Report</b><br/><sub>Photo + GPS in seconds — AI verifies the description against the image</sub>
+    </td>
+    <td width="33%" align="center">
+      <img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1200&q=70" alt="AI triage" width="100%"/><br/>
+      <b>🤖 AI Triage</b><br/><sub>Gemini 2.0 Flash vision + Groq classification &amp; translation, orchestrated by LangGraph</sub>
+    </td>
+    <td width="33%" align="center">
+      <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&q=70" alt="Analytics" width="100%"/><br/>
+      <b>📊 Authority Analytics</b><br/><sub>SLA breach heat, duplicate clustering, department throughput</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" align="center">
+      <img src="https://images.unsplash.com/photo-1567721913486-6585f069b332?w=1200&q=70" alt="QR on site" width="100%"/><br/>
+      <b>🏷️ QR Public Projects</b><br/><sub>Physical QR boards on assets — anyone scans, everyone sees the truth</sub>
+    </td>
+    <td width="33%" align="center">
+      <img src="https://images.unsplash.com/photo-1512428559087-560fa5ceab42?w=1200&q=70" alt="WhatsApp" width="100%"/><br/>
+      <b>💬 WhatsApp Intake</b><br/><sub>No app? No problem. Report and confirm entirely over WhatsApp</sub>
+    </td>
+    <td width="33%" align="center">
+      <img src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?w=1200&q=70" alt="Field workers" width="100%"/><br/>
+      <b>🦺 Worker Trust Loop</b><br/><sub>Resolution with photo proof builds a worker credibility metric</sub>
+    </td>
+  </tr>
+</table>
+
+## 🧰 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 19 · TypeScript · Vite · Tailwind CSS 4 · shadcn/ui · Zustand · React Router (code-split) |
+| **Backend** | FastAPI · Pydantic v2 · Uvicorn |
+| **AI** | LangGraph orchestration · Gemini 2.0 Flash (vision) · Groq (classification / translation) |
+| **Data & Auth** | Supabase Postgres (RLS) · Supabase Auth (JWT) · Supabase Storage |
+| **Messaging** | Twilio WhatsApp Business API (webhook intake + confirmation) |
+| **Quality** | pytest · ruff · vulture · knip · tsc strict · GitHub Actions CI |
+
+## 🚀 Quickstart
+
+**Prerequisites:** Node 18+, Python 3.10+, Git — plus a [Supabase](https://supabase.com) project and a [Groq](https://console.groq.com) API key *(optional: Gemini & Twilio for vision + WhatsApp)*.
+
 ```bash
+# 1 · Clone
+git clone https://github.com/nishanthere10/jansamadhaan-ai.git
+cd jansamadhaan-ai
+
+# 2 · Backend
 cd backend
-.venv\Scripts\python.exe -m pytest -q                        # 145 unit tests pass
-.venv\Scripts\python.exe -m pytest tests/test_authorization_sweep.py -q # 12 RBAC tests
-.venv\Scripts\python.exe -m ruff check .                     # Zero lint findings
-.venv\Scripts\python.exe -m vulture app vulture_whitelist.py --min-confidence 60 # Dead-code check
+python -m venv .venv
+.\.venv\Scripts\activate            # Windows  (macOS/Linux: source .venv/bin/activate)
+pip install -r requirements.txt
+copy .env.example .env              # add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GROQ_API_KEY…
+uvicorn app.main:app --reload       # → http://localhost:8000/docs
+
+# 3 · Frontend
+cd ../frontend
+npm install
+npm run dev                         # → http://localhost:5173
 ```
 
-### Frontend Checks
+### 🔑 Environment Variables (backend `.env`)
+
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_ANON_KEY` / `SUPABASE_JWT_SECRET` | Database, auth & storage |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` (`gemini-2.0-flash`) | Vision analysis |
+| `GROQ_API_KEY` / `GROQ_MODEL` | Classification & translation |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` | WhatsApp intake |
+| `FRONTEND_URL` | Base URL used in QR codes & WhatsApp links |
+| `ENVIRONMENT` | `production` (default) hardens auth & disables demo data; `DEV_AUTH_BYPASS` only works outside production |
+
+## 🗺️ API Map
+
+| Route | Endpoint | Auth |
+|---|---|---|
+| Auth | `POST /api/auth/signup · login · aadhar-login · logout` · `GET /me · /workers` | JWT |
+| Incidents | `POST /upload` · `GET /{id}` · `PUT /{id}/status · /{id}/triage` · `GET /{id}/updates` · `POST /{id}/reprocess · /{id}/feedback` · `GET /reverse-geocode` | JWT |
+| **Public** | `GET /api/incidents/public/track/{token}` — QR tracker, **no login** | 🌐 Public |
+| AI | `POST /api/ai/translate · /classify · /vision/analyze` | JWT |
+| QR Projects | `GET · PUT · DELETE /api/qr-projects/{id}` | Authority |
+| Notifications | `PUT /api/notifications/{id}/read` | JWT |
+| WhatsApp | Twilio webhook → media download → AI triage → incident creation | Signature |
+
+## 🧪 Quality & CI
+
 ```bash
+# Backend
+cd backend && .\.venv\Scripts\activate
+ruff check . && python -m pytest -q
+
+# Frontend
 cd frontend
-npx tsc -b --force             # TypeScript compilation (zero errors)
-npm run knip:ci                # Dead-code & export check (exit 0)
-node --test tests/*.test.cjs   # Component & route-guard unit tests (3 pass)
-npm run build                  # Production build compilation
+npx tsc --noEmit && npm run build
 ```
 
----
+GitHub Actions (`.github/workflows/ci.yml`) runs the gate on every push. Auth hardening, transactional resolution finalization, duplicate clustering, and the server-side SLA engine are covered by the phase audit in [`CURRENT_CODEBASE_REPORT.md`](CURRENT_CODEBASE_REPORT.md).
 
-## 🔒 Security & Production Hardening
+## 🗺️ Roadmap
 
-Jan Samadhan has completed a rigorous 7-phase hardening sweep:
+- [x] LangGraph AI triage pipeline (vision + classify + translate)
+- [x] Server-side SLA engine shared with the frontend
+- [x] Public QR tracking with safe data projection
+- [x] Transactional resolution finalization + audit trail
+- [ ] Migration validation (006/007/008) — tracked in `remaining.md`
+- [ ] Multi-language citizen UI beyond AI translation
+- [ ] Municipal pilot with live SLA dashboards
 
-1. **Authentication & Identity**:
-   * Removed unauthenticated fallback to authority roles; invalid or expired JWTs strictly return HTTP `401 Unauthorized`.
-   * Development bypass is explicitly locked down: requires `ENVIRONMENT != production` **AND** `DEV_AUTH_BYPASS=true`.
-2. **Access Control & BOLA Protection**:
-   * Workers can only inspect and update tasks explicitly assigned to them.
-   * Incident update timeline notes and proof URLs are restricted to authorized personnel.
-   * Mock worker assignment is strictly development-only (rejected with `422` in production).
-3. **Resolution Integrity**:
-   * Photo proof is mandatory for marking incidents resolved.
-   * Llama-4-Scout executes an explicit tri-state inspection (`verified | rejected | error`). Provider timeouts or network failures never incorrectly mark a repair as rejected.
-   * Atomic ticket closure via PostgreSQL RPC (`finalize_resolution`) rolls back updates if audit logging fails.
-4. **Resilient WhatsApp Management**:
-   * MessageSid deduplication enforced with a 1-hour TTL and a 10,000-entry cap.
-   * Session state bound to 5,000 active sessions with automatic LRU eviction.
-   * Single-point Twilio signature verification that fails closed when auth tokens are missing.
-5. **Transactional Audit Logging**:
-   * Status change audits are written *before* the state update, with automatic compensation if the update fails.
+## 🤝 Contributing
+
+1. Fork → create a branch (`feature/my-feature`)
+2. Run the quality gate locally (ruff · pytest · tsc · build)
+3. Open a PR describing the *why*, not just the *what*
+
+## 📄 License
+
+MIT — see [`LICENSE`](LICENSE). Photos courtesy of [Unsplash](https://unsplash.com); project logos and product artwork are original assets of this repository.
 
 ---
 
-## 📡 API Overview
+<div align="center">
+  <sub><b>जन समाधान</b> — because every citizen's complaint deserves a deadline. ⏱️🇮🇳</sub>
+</div>
 
-The FastAPI backend provides auto-generated OpenAPI documentation accessible at `/api/docs`:
 
-```
-POST   /api/v1/auth/login                  - Authenticate user & issue JWT
-POST   /api/v1/auth/signup                 - Citizen registration (forces role=citizen)
-POST   /api/v1/auth/aadhar-login           - Aadhaar OTP authentication tab
-GET    /api/v1/auth/workers                - List departmental field workers (Authority only)
-
-POST   /api/v1/incidents                   - Create incident (Triggers AI pipeline)
-GET    /api/v1/incidents                   - List incidents (Role-filtered)
-GET    /api/v1/incidents/{id}              - Fetch incident details & AI breakdown
-PUT    /api/v1/incidents/{id}/status       - Update status & upload proof (Worker/Authority)
-PUT    /api/v1/incidents/{id}/triage       - Override AI category, severity, department
-POST   /api/v1/incidents/upload            - Secure image upload (MIME & size validated)
-GET    /api/v1/incidents/{id}/updates      - Retrieve timeline audit trail
-POST   /api/v1/incidents/{id}/reprocess    - Re-trigger AI pipeline analysis
-
-POST   /api/v1/qr-projects                 - Create civic project tracking board
-GET    /api/v1/qr-projects/{id}            - Public project status query
-POST   /api/webhooks/whatsapp              - Twilio incoming WhatsApp webhook
-GET    /api/v1/notifications               - List user notifications
-GET    /health                             - System health probe
-```
-
----
-
-## 🎨 Design Standards (UX4G)
-
-The user interface follows the official **UX4G (User Experience for Government)** standard developed by the National e-Governance Division (NeGD) and Ministry of Electronics & Information Technology (MeITy):
-* **Official Palette**: Govt Navy Blue (`#1E3A8A`), Ashoka Gold (`#D97706`), Forest Green (`#059669`), and Saffron accents.
-* **Continuity Tokens**: Pre-declared Bootstrap-compatible spacer scales and shadow elevations without unlayered CSS conflicts.
-* **Accessibility**: Full keyboard navigability, high-contrast text ratios, screen-reader support, and `prefers-reduced-motion` compliance.
-
----
-
-## 📄 Contributing & License
-
-Contributions are welcome! Please ensure all backend unit tests (`pytest`), frontend typechecks (`tsc`), and dead-code checks (`knip`) pass before opening a pull request.
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
-© 2026 **Jan Samadhan Team** · Built with pride for Indian Civic Governance 🇮🇳
