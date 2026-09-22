@@ -1,5 +1,6 @@
-import urllib.request
 import urllib.error
+import urllib.request
+
 try:
     resp = urllib.request.urlopen('http://127.0.0.1:8000/api/v1/incidents')
     print("Success:", resp.read().decode())

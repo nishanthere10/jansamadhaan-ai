@@ -4,13 +4,13 @@ Authority-managed transparent public projects with scannable QR codes.
 """
 
 import logging
-import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
 from pydantic import BaseModel
 from supabase import Client
 
+from app.core.config import settings
 from app.core.database import get_supabase
 from app.core.security import get_current_user
 
@@ -65,7 +65,10 @@ def create_project(
 
         # Auto-generate QR code URL pointing to the public tracker page
         project_id = project["id"]
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+        # settings.FRONTEND_URL is validator-normalized (trailing slash and
+        # stray whitespace/CRLF stripped) — a raw os.getenv() call would skip
+        # that guard and bake a poisoned URL into the stored qr_code_url.
+        frontend_url = settings.FRONTEND_URL
         qr_url = (
             f"https://api.qrserver.com/v1/create-qr-code/"
             f"?size=150x150&data={frontend_url}/track/{project_id}"

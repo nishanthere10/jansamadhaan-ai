@@ -56,6 +56,7 @@ class IncidentResponse(BaseModel):
     cluster_id: str | None = None
     is_primary_incident: bool | None = False
     duplicate_count: int | None = 0
+    public_tracking_token: str | None = None
     # Enriched fields returned by backend endpoints
     citizen: dict | None = None
     worker: dict | None = None
@@ -157,4 +158,38 @@ class IncidentFeedbackRequest(BaseModel):
         if v < 1 or v > 5:
             raise ValueError("rating must be between 1 and 5")
         return v
+
+
+class PublicTrackingResponse(BaseModel):
+    """Sanitized public tracking response. PII-free, explicit allow-list.
+
+    Deliberately thin: this is served WITHOUT authentication, so every field
+    here must be safe for an anonymous visitor holding the tracking link.
+    Removed as unimplemented/duplicated (nothing consumed them):
+    ``ward`` (no ward model exists), ``address`` (duplicate of
+    ``location_label``), and the ``*_eligible`` booleans (feedback requires an
+    authenticated citizen session, which this anonymous route cannot provide).
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    tracking_id: str
+    title: str
+    description: str | None = None
+    category: str
+    severity: str
+    status: str
+    department: str | None = None
+    location_label: str | None = None
+    source: str | None = None
+    created_at: str
+    # SLA is computed server-side by app/services/sla_service.py — the
+    # frontend twin of this table lives in frontend/lib/sla.ts.
+    sla_state: str | None = None
+    sla_due_at: str | None = None
+    sla_hours: int | None = None
+    citizen_visible_timeline: list[dict] = []
+    image_url: str | None = None
+    resolution_image: str | None = None
+    verification_status: str | None = None
+    verification_score: float | None = None
 

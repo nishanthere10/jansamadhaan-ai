@@ -90,7 +90,21 @@ def configure_logging(level: str = "INFO", dev: bool = False) -> None:
     root.addHandler(handler)
 
     # ── Silence noisy third-party libraries ────────────────────────────────────
-    for noisy in ("httpx", "httpcore", "supabase", "gotrue", "postgrest"):
+    # These emit per-request/per-header DEBUG records. `hpack` in particular
+    # dumps every HTTP/2 header, which leaked the Supabase `apikey` into logs.
+    for noisy in (
+        "httpx",
+        "httpcore",
+        "hpack",
+        "hyperframe",
+        "urllib3",
+        "supabase",
+        "gotrue",
+        "postgrest",
+        "storage3",
+        "realtime",
+        "asyncio",
+    ):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     logging.getLogger(__name__).info(

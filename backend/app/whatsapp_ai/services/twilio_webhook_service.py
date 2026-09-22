@@ -292,6 +292,7 @@ class TwilioWebhookService:
             )
 
             tracking_id = incident_response["data"].get("tracking_id", "Unknown")
+            public_tracking_token = incident_response["data"].get("public_tracking_token")
             logger.info(
                 f"✅ Complaint submitted for {phone}: {tracking_id} | "
                 f"desc_len={len(session.description)}, "
@@ -306,7 +307,7 @@ class TwilioWebhookService:
             # Exactly one confirmation per successfully created complaint. It is
             # never sent on the failure path, and a redelivered webhook is stopped
             # earlier by MessageSid deduplication, so retries cannot duplicate it.
-            WhatsAppConfirmationService.send_confirmation(phone, tracking_id)
+            WhatsAppConfirmationService.send_confirmation(phone, tracking_id, public_tracking_token)
 
             return {"status": "success", "tracking_id": tracking_id}
 
@@ -314,3 +315,4 @@ class TwilioWebhookService:
             logger.error(f"Failed to submit complaint for {phone}: {e}", exc_info=True)
             WhatsAppSessionManager.clear_session(phone)
             raise
+

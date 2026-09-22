@@ -105,6 +105,7 @@ class TestSignup:
         The profile row must always be inserted with role='citizen'.
         """
         from unittest.mock import patch
+
         from app.core.config import settings
 
         auth_res = MagicMock()

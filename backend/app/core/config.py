@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # App
     ENVIRONMENT: str = "production"
 
+    # Public base URL of the frontend. Used for links that leave the API
+    # (QR codes, WhatsApp confirmation messages). Never hardcode localhost.
+    FRONTEND_URL: str = "http://localhost:5173"
+
     # ── Auth hardening ────────────────────────────────────────────────────────
     # DEV_AUTH_BYPASS enables the development-only canned-user bypass in
     # app/core/security.py. It is honoured ONLY when ENVIRONMENT != "production".
@@ -51,6 +55,12 @@ class Settings(BaseSettings):
         if v and not v.startswith("https://"):
             v = "https://" + v
         return v
+
+    @field_validator("FRONTEND_URL", mode="before")
+    @classmethod
+    def clean_frontend_url(cls, v: str) -> str:
+        """Strip whitespace and any trailing slash so link building is safe."""
+        return str(v).strip().rstrip("/")
 
     @field_validator(
         "SUPABASE_SERVICE_ROLE_KEY",

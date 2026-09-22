@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 # Default free-tier model (15 RPM, high multimodal accuracy)
 DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
-FALLBACK_GEMINI_MODEL = "gemini-flash-latest"
 MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB API limit
 
 # Aliases for deprecated or legacy model names

@@ -1,5 +1,4 @@
 from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
 
 from app.core.security import get_current_user
 from app.main import app

@@ -52,5 +52,5 @@ async def test_vision_analyze(req: VisionAnalyzeRequest, user: dict = Depends(ge
         )
         return {"success": True, "result": result}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 

@@ -72,7 +72,11 @@ class TestWebhookDeduplication:
     async def test_redelivered_sid_creates_one_incident_and_one_confirmation(self):
         _awaiting_location()
         parsed = _parsed(sid="SM-DUP")
-        create = MagicMock(return_value={"data": {"tracking_id": "CIV-7"}})
+        create = MagicMock(
+            return_value={
+                "data": {"tracking_id": "CIV-7", "public_tracking_token": "tok-abc-123"}
+            }
+        )
         with (
             patch.object(TwilioSignatureVerifier, "verify_request", AsyncMock(return_value=True)),
             patch.object(WhatsAppMessageParser, "parse_webhook", AsyncMock(return_value=parsed)),
@@ -89,7 +93,10 @@ class TestWebhookDeduplication:
         assert second == {"status": "skipped"}
         assert create.call_count == 1
         assert confirm.call_count == 1
-        assert confirm.call_args.args == (PHONE, "CIV-7")
+        # The third argument is the public tracking token: the confirmation SMS
+        # must carry a link that actually resolves, so the token is part of the
+        # contract, not an optional extra.
+        assert confirm.call_args.args == (PHONE, "CIV-7", "tok-abc-123")
 
     @pytest.mark.asyncio
     async def test_confirmation_is_not_sent_when_creation_fails(self):

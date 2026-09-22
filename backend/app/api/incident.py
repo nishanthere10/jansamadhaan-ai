@@ -17,6 +17,7 @@ from app.schemas.incident import (
 from app.services.incident_service import IncidentService
 from app.services.notification_service import NotificationService
 from app.services.resolution_service import submit_resolution
+from app.services.sla_service import compute_sla_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -638,7 +639,173 @@ def reprocess_incident_ai(
         ) from e
 
 
-# ── Citizen Feedback & Resolution Dispute ────────────────────────────────────
+# ── Public Tracking API ───────────────────────────────────────────────────────
+
+# Migration 009 adds incidents.public_tracking_token. Until it is applied, a
+# naive query surfaces a raw PostgREST 42703 as an HTTP 500. We detect that
+# condition and answer with an actionable 503 instead.
+_PG_UNDEFINED_COLUMN = "42703"
+
+
+def _is_missing_public_token_column(exc: Exception) -> bool:
+    """True when PostgREST rejected the query because the token column is absent."""
+    text = str(exc)
+    return _PG_UNDEFINED_COLUMN in text and "public_tracking_token" in text
+
+
+@router.get("/public/track/{public_token}")
+def get_public_tracking_info(public_token: str, db: Client = Depends(get_supabase)):
+    """
+    Publicly accessible endpoint for citizen tracking.
+
+    Does NOT require authentication, so the response is built from an explicit
+    allow-list of columns. ``select("*")`` is deliberately avoided: a future
+    column added to the table must never leak here by default.
+    """
+    try:
+        res = (
+            db.table("incidents")
+            .select(
+                "id, tracking_id, title, description, category, severity, status, "
+                "source, created_at, image_url, address, location_name, "
+                "ai_department, department, ai_processing_status"
+            )
+            .eq("public_tracking_token", public_token)
+            .execute()
+        )
+        if not res.data:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="Complaint not found. Please check your tracking link.",
+            )
+
+        incident = res.data[0]
+        incident_id = incident["id"]
+
+        # Incident audit trail. Guarded: public tracking is a transparency
+        # feature and must never fail because a side query broke.
+        try:
+            updates_res = (
+                db.table("incident_updates")
+                .select("status, note, created_at, after_image_url")
+                .eq("incident_id", incident_id)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            updates = updates_res.data or []
+        except Exception:
+            logger.warning("Public tracking: timeline unavailable for %s", incident_id)
+            updates = []
+
+        # Canonical verification source. The incidents table has no
+        # resolution_verification_status column (it never did); the
+        # authoritative record is the resolution_verifications attempt row.
+        verification_status = None
+        verification_score = None
+        try:
+            ver_res = (
+                db.table("resolution_verifications")
+                .select("verification_status, verification_score")
+                .eq("incident_id", incident_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if ver_res.data:
+                verification_status = ver_res.data[0].get("verification_status")
+                verification_score = ver_res.data[0].get("verification_score")
+        except Exception:
+            logger.debug("Public tracking: no verification record for %s", incident_id)
+
+        # ── Timeline ──
+        timeline = [{
+            "status": "Report received",
+            "time": incident["created_at"],
+            "note": "Citizen submitted grievance via "
+                    + str(incident.get("source") or "Web").capitalize(),
+        }]
+
+        if incident.get("ai_processing_status") == "completed":
+            timeline.append({
+                "status": "AI triage completed",
+                "time": incident["created_at"],
+                "note": f"Categorized as {incident.get('category')} "
+                        f"({incident.get('severity')})",
+            })
+
+        # Only a resolved audit row carries repair proof. Keep the newest one so
+        # the public page shows the repair that actually closed the ticket.
+        resolution_image = None
+        for upd in updates:
+            upd_status = (upd.get("status") or "").lower()
+            note_str = upd.get("note") or f"Status updated to {upd_status or 'unknown'}"
+            if upd_status == "resolved" and verification_status == "verified":
+                note_str = "Worker submitted repair, verified by AI."
+            if upd_status == "resolved" and upd.get("after_image_url"):
+                resolution_image = upd.get("after_image_url")
+            timeline.append({
+                "status": (upd_status.replace("-", " ").replace("_", " ").capitalize()
+                           or "Update"),
+                "time": upd["created_at"],
+                "note": note_str,
+            })
+
+        status = incident.get("status", "pending")
+
+        # Real SLA state (server-side twin of frontend/lib/sla.ts). The previous
+        # implementation returned a hardcoded "ON TRACK" for every incident,
+        # including ones that were long overdue.
+        sla = compute_sla_state(
+            created_at=incident.get("created_at"),
+            category=incident.get("category"),
+            severity=incident.get("severity"),
+            status=status,
+        )
+
+        # Map to PublicTrackingResponse schema
+        from app.schemas.incident import PublicTrackingResponse
+        return PublicTrackingResponse(
+            tracking_id=incident.get("tracking_id", "Unknown"),
+            title=incident.get("title", "Civic Grievance"),
+            description=incident.get("description"),
+            category=incident.get("category", "General"),
+            severity=incident.get("severity", "Medium"),
+            status=status,
+            department=incident.get("ai_department") or incident.get("department") or "Pending Assignment",
+            location_label=incident.get("location_name") or incident.get("address") or "Location Provided",
+            source=incident.get("source", "Web"),
+            created_at=incident["created_at"],
+            sla_state=sla["sla_state"],
+            sla_due_at=sla["sla_due_at"],
+            sla_hours=sla["sla_hours"],
+            citizen_visible_timeline=timeline,
+            image_url=incident.get("image_url"),
+            resolution_image=resolution_image,
+            verification_status=verification_status,
+            verification_score=verification_score,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        if _is_missing_public_token_column(e):
+            # Loud in the logs, honest to the client. Not a 500: nothing is
+            # broken, the deployment simply has migration 009 pending.
+            logger.error(
+                "Public tracking unavailable: migration 009_v2_tracking_schema.sql "
+                "has not been applied (incidents.public_tracking_token missing)"
+            )
+            raise HTTPException(
+                status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Public tracking is not enabled on this deployment yet.",
+            ) from e
+        logger.exception("Failed to retrieve public tracking info")
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while retrieving this complaint.",
+        ) from e
+
+
+# ── List Incidents (role-filtered) ────────────────────────────────────────────
 
 @router.post("/{incident_id}/feedback")
 def submit_incident_feedback(

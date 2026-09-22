@@ -2,7 +2,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client, create_client
+from supabase import Client
 
 from app.core.config import settings
 from app.core.database import get_supabase
@@ -80,8 +80,9 @@ async def signup(req: SignupRequest):
         elif assigned_role == "worker" and not profile_data.get("department"):
             profile_data["department"] = "Public Works (PWD)"
 
-        # Upsert into public.users table
-        upsert_res = db.table("users").upsert(profile_data).execute()
+        # Upsert into public.users table. The side effect is what matters; the
+        # response body is not used (ruff F841 previously flagged the binding).
+        db.table("users").upsert(profile_data).execute()
         logger.info(f"[Auth] Profile upserted in public.users: user_id='{user_id}', email='{req.email}', role='{assigned_role}'")
 
         # Auto-confirm the user email so the account can log in immediately

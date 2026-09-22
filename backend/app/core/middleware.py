@@ -120,6 +120,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         import os
+
         from starlette.responses import JSONResponse
 
         # Bypass during automated pytest runs unless explicitly testing rate limiting

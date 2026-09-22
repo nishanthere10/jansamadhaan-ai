@@ -240,7 +240,9 @@ async def process_incident_ai_background(
 
             if citizen_id:
                 try:
-                    from app.ai.services.trust_scoring_service import TrustScoringService
+                    from app.ai.services.trust_scoring_service import (
+                        TrustScoringService,
+                    )
                     await TrustScoringService.process({"citizen_id": citizen_id})
                 except Exception as trust_err:
                     logger.warning(f"Failed to update trust score for {citizen_id}: {trust_err}")
